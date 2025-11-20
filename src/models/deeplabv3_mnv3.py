@@ -5,7 +5,7 @@ import torchvision
 # We will use the DeepSeekV3 with MobileNetV3 backbone model.
 # # https://docs.pytorch.org/vision/main/_modules/torchvision/models/segmentation/deeplabv3.html#deeplabv3_mobilenet_v3_large
 
-# We will use the same taxonomy as the official CityScapes evaluation script. NUM_CLASSES = 19
+# We will use the same taxonomy as the official CityScapes evaluation taxonomy. NUM_CLASSES = 19
 # https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py
 NUM_CLASSES = 19
 
