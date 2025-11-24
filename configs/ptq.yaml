@@ -1,0 +1,16 @@
+ptq:
+  mode: "static" # "static" or "dynamic"
+  calibration:
+    steps: 100
+    batch_size: 32
+  weights:
+    dtype: "qint8"
+    scheme: "symmetric"
+    granularity: "per_channel" # "per_channel" or "per_tensor"
+    observer: "minmax" # "minmax", "moving_average_minmax"
+  activations:
+    dtype: "quint8"
+    scheme: "asymmetric"
+    granularity: "per_tensor"
+    observer: "moving_average_minmax" # "minmax", "moving_average_minmax"
+    reduce_range: true
