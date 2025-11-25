@@ -1,6 +1,6 @@
 ptq:
   model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
-  mode: "int4" # "default", "int8", "int6" or "int4"
+  mode: "int8" # "default", "int8", "int6" or "int4"
 
   weights: 
     dtype: "qint8" # Keep constant.
@@ -14,8 +14,10 @@ ptq:
     reduce_range: True # Keep constant.
 
   calibration:
-    steps: 100
+    steps: 20
     batch_size: 32
+
+  skip_aspp: True
 
   # Default is the following:
   #   weights: 

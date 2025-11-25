@@ -117,6 +117,10 @@ def build_qconfig(config, mode):
     # Hardsigmoid has a fixed min/max mapping (need to use FixedQParamsObserver).
     qconfig_mapping.set_object_type(nn.Hardsigmoid, fixed_qconfig)
 
+    if config["skip_aspp"]: 
+        # Skip quantizing the ASPP module (only quantize the backbone).
+        qconfig_mapping.set_module_name("classifier.0", None) # ASPP module (convs and project).
+
     return qconfig_mapping
 
 if __name__ == "__main__":
