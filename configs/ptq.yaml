@@ -1,4 +1,5 @@
 ptq:
+  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
   mode: "static" # "static" or "dynamic"
   calibration:
     steps: 100
