@@ -1,11 +1,16 @@
 import os
+import glob
 import yaml
+from PIL import Image
+
+# Torch imports.
 import torch
 import torch.nn as nn
 import torch.ao.quantization as tq
 import torch.ao.quantization.quantize_fx as quantize_fx
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as T
 from torchvision.transforms import functional as F
-from PIL import Image
 
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -13,6 +18,26 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 
 DEBUG = True
+
+SEED = 42
+
+class CalibrationDataset(Dataset):
+    # Similar to cityScapesDataset (create_dataset.py) but only returns images.
+    # Need to make sure Transform is the SAME.
+    def __init__(self, img_dir):
+        self.img_paths = glob.glob(os.path.join(img_dir, "**", "*.png"), recursive=True)
+        self.transform = T.Compose([
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+    def __len__(self):
+        return len(self.img_paths)
+    
+    def __getitem__(self, idx):
+        image = Image.open(self.img_paths[idx]).convert("RGB")
+        image = self.transform(image)
+        return image
 
 class QuantizedModelWrapper(nn.Module):
     # Wrapper to output `Tensor` instead of a `dict`.
@@ -22,7 +47,12 @@ class QuantizedModelWrapper(nn.Module):
     
     def forward(self, x):
         return self.model(x)["out"]
-    
+
+def set_seed(seed = SEED):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+
 def build_qconfig(config, mode):
     qconfig = tq.get_default_qconfig_mapping("fbgemm")
     if mode == "default":
@@ -73,9 +103,24 @@ def build_qconfig(config, mode):
     )
 
     global_config = tq.QConfig(activation=act_observer, weight=weight_observer)
-    return {"": global_config}
+    qconfig_mapping = tq.QConfigMapping().set_global(global_config)
+
+    fixed_qconfig = tq.QConfig(
+        activation = tq.FixedQParamsObserver.with_args(
+            dtype= torch.quint8,
+            scale = 1.0 / 256.0,
+            zero_point = 0,
+        ),
+        weight = weight_observer,
+    )
+    
+    # Hardsigmoid has a fixed min/max mapping (need to use FixedQParamsObserver).
+    qconfig_mapping.set_object_type(nn.Hardsigmoid, fixed_qconfig)
+
+    return qconfig_mapping
 
 if __name__ == "__main__":
+    set_seed()
     print("--- Running PTQ Script ---")
     print("Loading Configuration ...")
     # Load configuration.
@@ -97,12 +142,27 @@ if __name__ == "__main__":
     qconfig_mapping = build_qconfig(config, config["mode"])
 
     print("Quantizing Model ...")
-    # Grab a sample input from validation set (NEED TO MODIFY THE SIZE maybe).
-    sample_img = Image.open("data/leftImg8bit_trainvaltest/leftImg8bit/val/frankfurt/frankfurt_000000_000294_leftImg8bit.png").convert('RGB')
-    sample_tensor = F.to_tensor(sample_img).unsqueeze(0)
-    prepared_model = quantize_fx.prepare_fx(model, qconfig_mapping, (sample_tensor,))
-    quantized_model = quantize_fx.convert_fx(prepared_model)
+    # Grab a sample input from validation set with CalibrationDataset.
+    dataroot = "data/leftImg8bit_trainvaltest/leftImg8bit/train"
+    calib_dataset = CalibrationDataset(dataroot)
+    calib_dataloader = DataLoader(calib_dataset, batch_size=1, shuffle=True)
 
+    sample_tensor = next(iter(calib_dataloader))
+    prepared_model = quantize_fx.prepare_fx(model, qconfig_mapping, (sample_tensor,))
+    prepared_model.eval()
+
+    # Calibrate with Calibration Dataset.
+    print("Calibrating Model ...")
+    with torch.no_grad():
+        for i, image in enumerate(calib_dataloader):
+            prepared_model(image)
+            if (i % 10 == 0 and i > 0):
+                print(f"  Calibrated {i} batches ...")
+
+            if (i >= config["calibration"]["steps"] - 1):
+                break
+    quantized_model = quantize_fx.convert_fx(prepared_model)
+    
     with open("ptq_quantized.txt", "w") as f:
         print(quantized_model, file=f)
 
