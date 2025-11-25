@@ -1,17 +1,27 @@
 ptq:
   model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
-  mode: "static" # "static" or "dynamic"
-  calibration:
-    steps: 100
-    batch_size: 32
-  weights:
+
+  weights: 
     dtype: "qint8"
     scheme: "symmetric"
     granularity: "per_channel" # "per_channel" or "per_tensor"
     observer: "minmax" # "minmax", "moving_average_minmax"
+  
   activations:
     dtype: "quint8"
     scheme: "asymmetric"
-    granularity: "per_tensor"
+    granularity: "per_tensor" # "per_channel" or "per_tensor"
     observer: "moving_average_minmax" # "minmax", "moving_average_minmax"
     reduce_range: true
+
+  calibration:
+    steps: 100
+    batch_size: 32
+
+  experiments:
+    int8: 
+      weights: { quant_min: -128, quant_max: 127 }
+      activations: { quant_min: 0, quant_max: 255 }
+    int4:
+      weights: { quant_min: -8, quant_max: 7 }
+      activations: { quant_min: 0, quant_max: 15 }
