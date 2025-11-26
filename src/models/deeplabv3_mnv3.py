@@ -33,5 +33,5 @@ def save_model(model, path):
 
 def load_model(model, path, device="cpu"):
     state = torch.load(path, map_location=device)
-    model.load_state_dict(state)
+    model.load_state_dict(state, strict=False) # This ignores the auxiliary head.
     return model

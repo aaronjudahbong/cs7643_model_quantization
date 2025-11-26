@@ -1,0 +1,36 @@
+ptq:
+  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
+  mode: "int8" # "default", "int8", "int6" or "int4"
+
+  weights: 
+    dtype: "qint8" # Keep constant.
+    scheme: "symmetric" # "symmetric" or "asymmetric"
+    granularity: "per_channel" # "per_channel" or "per_tensor"
+  
+  activations:
+    dtype: "quint8" # Keep constant.
+    scheme: "asymmetric" # "symmetric" or "asymmetric"
+    granularity: "per_tensor" # Keep constant with Histogram Observer.
+    reduce_range: True # Keep constant.
+
+  calibration:
+    steps: 128
+
+  skip_aspp: True
+
+  # Default is the following:
+  #   weights: 
+  #     dtype: "qint8"
+  #     scheme: "symmetric"
+  #     granularity: "per_channel"
+  #     observer: "minmax"
+  #     quant_min: -128
+  #     quant_max: 127
+  #   activations:
+  #     dtype: "quint8"
+  #     scheme: "asymmetric"
+  #     granularity: "per_tensor"
+  #     observer: "histogram"
+  #     reduce_range: True
+  #     quant_min: 0
+  #     quant_max: 127
