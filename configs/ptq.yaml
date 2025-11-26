@@ -14,8 +14,7 @@ ptq:
     reduce_range: True # Keep constant.
 
   calibration:
-    steps: 20
-    batch_size: 32
+    steps: 128
 
   skip_aspp: True
 

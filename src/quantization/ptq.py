@@ -164,6 +164,7 @@ if __name__ == "__main__":
                 print(f"  Calibrated {i} batches ...")
 
             if (i >= config["calibration"]["steps"] - 1):
+                print(f"  Completed {config['calibration']['steps']} calibration steps.")
                 break
     quantized_model = quantize_fx.convert_fx(prepared_model)
     
