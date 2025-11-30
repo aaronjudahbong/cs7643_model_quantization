@@ -16,10 +16,9 @@ import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
+from .quantization_utils import set_seed, build_qconfig
 
 DEBUG = True
-
-SEED = 42
 
 class CalibrationDataset(Dataset):
     # Similar to cityScapesDataset (create_dataset.py) but only returns images.
@@ -48,81 +47,6 @@ class QuantizedModelWrapper(nn.Module):
     def forward(self, x):
         return self.model(x)["out"]
 
-def set_seed(seed = SEED):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-
-def build_qconfig(config, mode):
-    qconfig = tq.get_default_qconfig_mapping("fbgemm")
-    if mode == "default":
-        return qconfig
-    
-    # Define weight and activation dtype.
-    weight_dtype = torch.qint8 if config["weights"]["dtype"] == "qint8" else torch.quint8
-    act_dtype = torch.qint8 if config["activations"]["dtype"] == "qint8" else torch.quint8
-    
-    # Define weight scheme based on granularity (keep it symmetric).
-    # Keep activation scheme fixed (affine).
-    weight_scheme = torch.per_channel_symmetric if config["weights"]["granularity"] == "per_channel" else torch.per_tensor_symmetric
-    act_scheme = torch.per_tensor_affine
-
-    # Define quantization ranges based on model.
-    if mode == "int8":
-        weight_quant_min, weight_quant_max = -128, 127
-        act_quant_min, act_quant_max = 0, 127 # reduce_range = True
-    elif mode == "int6":
-        weight_quant_min, weight_quant_max = -32, 31
-        act_quant_min, act_quant_max = 0, 31 # reduce_range = True
-    elif mode == "int4":
-        weight_quant_min, weight_quant_max = -8, 7
-        act_quant_min, act_quant_max = 0, 7 # reduce_range = True
-
-    # Build QConfig for weights and activations.
-    # If per_channel need to use PerChannelMinMaxObserver, else use MinMaxObserver.
-    if config["weights"]["granularity"] == "per_channel":
-        weight_observer = tq.PerChannelMinMaxObserver.with_args(
-            dtype=weight_dtype,
-            qscheme=weight_scheme,
-            quant_min=weight_quant_min,
-            quant_max=weight_quant_max,
-        )
-    else:
-        weight_observer = tq.MinMaxObserver.with_args(
-            dtype=weight_dtype,
-            qscheme=weight_scheme,
-            quant_min=weight_quant_min,
-            quant_max=weight_quant_max,
-        )
-
-    act_observer = tq.HistogramObserver.with_args(
-        dtype=act_dtype,
-        qscheme=act_scheme,
-        quant_min=act_quant_min,
-        quant_max=act_quant_max,
-    )
-
-    global_config = tq.QConfig(activation=act_observer, weight=weight_observer)
-    qconfig_mapping = tq.QConfigMapping().set_global(global_config)
-
-    fixed_qconfig = tq.QConfig(
-        activation = tq.FixedQParamsObserver.with_args(
-            dtype= torch.quint8,
-            scale = 1.0 / 256.0,
-            zero_point = 0,
-        ),
-        weight = weight_observer,
-    )
-    
-    # Hardsigmoid has a fixed min/max mapping (need to use FixedQParamsObserver).
-    qconfig_mapping.set_object_type(nn.Hardsigmoid, fixed_qconfig)
-
-    if config["skip_aspp"]: 
-        # Skip quantizing the ASPP module (only quantize the backbone).
-        qconfig_mapping.set_module_name("classifier.0", None) # ASPP module (convs and project).
-
-    return qconfig_mapping
-
 if __name__ == "__main__":
     set_seed()
     print("--- Running PTQ Script ---")
@@ -143,7 +67,7 @@ if __name__ == "__main__":
 
     # Get Default Quantization Configuration (for now).
     print(f"Building QConfig with mode: {config['mode']}...")
-    qconfig_mapping = build_qconfig(config, config["mode"])
+    qconfig_mapping = build_qconfig("ptq", config)
 
     print("Quantizing Model ...")
     # Grab a sample input from validation set with CalibrationDataset.
