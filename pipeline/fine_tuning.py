@@ -1,3 +1,4 @@
+import yaml
 from pipeline.create_dataset import cityScapesDataset
 import torch
 import torch.nn as nn
@@ -9,10 +10,15 @@ training_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/train"
 training_label_folder = "./data/gtFine_trainId/gtFine/train"
 validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
 validation_label_folder = "./data/gtFine_trainId/gtFine/val"
-batch_size = 2
 
-training_dataset = cityScapesDataset(training_image_folder, training_label_folder)
-validation_dataset = cityScapesDataset(validation_image_folder, validation_label_folder)
+# Load configuration.
+with open("configs/ptq.yaml", "r") as f:
+    config = yaml.safe_load(f)["fp"]
+
+batch_size = config['training']['batch_size']
+
+training_dataset = cityScapesDataset(training_image_folder, training_label_folder, config['training']['train_transforms'])
+validation_dataset = cityScapesDataset(validation_image_folder, validation_label_folder, config['training']['val_transforms'])
 
 training_loader = DataLoader(training_dataset, batch_size, shuffle=True)
 validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True)
@@ -21,9 +27,10 @@ device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.i
 print(device)
 model = load_model(get_pretrained_model(19), "./models/baseline_init_model.pth", device=device)
 loss_function = nn.CrossEntropyLoss(ignore_index=255)
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5)
+optimizer = optim.Adam(model.parameters(), lr=float(config['training']['learning_rate']),
+                                            weight_decay=float(config['training']['weight_decay']))
 
-epochs = 10
+epochs = config['training']['epochs']
 for epoch in range(epochs):
     model.train()
     training_loss = 0

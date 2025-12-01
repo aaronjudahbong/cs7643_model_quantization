@@ -10,27 +10,71 @@ ptq:
   activations:
     dtype: "quint8" # Keep constant.
     scheme: "asymmetric" # "symmetric" or "asymmetric"
-    granularity: "per_tensor" # Keep constant with Histogram Observer.
-    reduce_range: True # Keep constant.
+    granularity: "per_tensor" # Keep constant
+    observer: "minmax"
 
   calibration:
     steps: 128
 
   skip_aspp: True
 
+qat:
+  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
+  mode: "int8" # "default", "int8", "int6" or "int4"
+
+  weights: 
+    dtype: "qint8" # Keep constant.
+    granularity: "per_channel" # "per_channel" or "per_tensor"
+  
+  activations:
+    dtype: "quint8" # Keep constant.
+    granularity: "per_tensor" # Keep constant
+    observer: "histogram"
+
+  calibration:
+    enabled: True
+    steps: 128
+
+  training:
+    epochs: 10
+    batch_size: 2
+    learning_rate: 1e-4
+    weight_decay: 1e-5
+    transforms:
+      crop: True
+      resize: True
+      flip: True
+
+  skip_aspp: True
+
+fp:
+  training:
+    epochs: 10
+    batch_size: 2
+    learning_rate: 1e-4
+    weight_decay: 1e-5
+    train_transforms:
+      crop: True
+      resize: True
+      flip: True
+    val_transforms:
+      crop: False
+      resize: False
+      flip: False
+
   # Default is the following:
   #   weights: 
   #     dtype: "qint8"
-  #     scheme: "symmetric"
+  #     scheme: "symmetric" # do not change
   #     granularity: "per_channel"
-  #     observer: "minmax"
+  #     observer: "minmax" # do not change
   #     quant_min: -128
   #     quant_max: 127
   #   activations:
   #     dtype: "quint8"
-  #     scheme: "asymmetric"
-  #     granularity: "per_tensor"
+  #     scheme: "asymmetric" # do not change
+  #     granularity: "per_tensor" # do not change, per_channel is not supported for activations
   #     observer: "histogram"
-  #     reduce_range: True
+  #     reduce_range: True # Keep constant.
   #     quant_min: 0
   #     quant_max: 127
