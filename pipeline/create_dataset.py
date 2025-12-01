@@ -59,10 +59,14 @@ class cityScapesDataset(Dataset):
         if self.to_crop:
             # Pad image and mask if needed
             crop_size = 769
-            pad_width = max(0, crop_size - image.size[0])//2+1
-            pad_height = max(0, crop_size - image.size[1])//2+1
-            image = F.pad(image, padding=(pad_width, pad_height, pad_width, pad_height))
-            label = F.pad(label, padding=(pad_width, pad_height, pad_width, pad_height), fill=255)
+            pad_width = max(0, crop_size - image.size[0])
+            pad_height = max(0, crop_size - image.size[1])
+            pad_l = pad_width//2
+            pad_r = pad_width-pad_l
+            pad_t = pad_height//2
+            pad_b = pad_height-pad_t
+            image = F.pad(image, padding=(pad_l, pad_t, pad_r, pad_b))
+            label = F.pad(label, padding=(pad_l, pad_t, pad_r, pad_b), fill=255)
 
             row, col, height, width = T.RandomCrop.get_params(image, (crop_size,crop_size))
             image = F.crop(image, row, col, height, width)
