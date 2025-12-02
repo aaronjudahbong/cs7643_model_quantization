@@ -24,10 +24,20 @@ training_loader = DataLoader(training_dataset, batch_size, shuffle=True)
 validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True)
 
 device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
-print(device)
+print(f"Using Device: {device}")
 model = load_model(get_pretrained_model(19), "./models/baseline_init_model.pth", device=device)
+model = model.to(device)
+
+#Freeze all but the last 3 layers. Only optimize these
+for parameter in model.parameters():
+    parameter.requires_grad = False
+
+for name, param in model.named_parameters():
+    if 'classifier.2' in name or 'classifier.4' in name or 'aux_classifier.4' in name:
+        param.requires_grad = True
+
 loss_function = nn.CrossEntropyLoss(ignore_index=255)
-optimizer = optim.Adam(model.parameters(), lr=float(config['training']['learning_rate']),
+optimizer = optim.Adam([param for param in model.parameters() if param.requires_grad], lr=float(config['training']['learning_rate']),
                                             weight_decay=float(config['training']['weight_decay']))
 
 epochs = config['training']['epochs']
