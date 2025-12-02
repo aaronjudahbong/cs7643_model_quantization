@@ -57,8 +57,8 @@ if __name__ == "__main__":
         model.train()
         training_loss = 0
         for image, labels in tqdm(training_loader, desc=f"Training Epoch {epoch}"):
-            image = image.to(device)
-            labels = labels.to(device)
+            image = image.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
             optimizer.zero_grad()
             out = model(image)['out']
@@ -71,8 +71,8 @@ if __name__ == "__main__":
         validation_loss = 0
         with torch.no_grad():
             for image, labels in tqdm(validation_loader, desc=f"Validation Epoch {epoch}"):
-                image = image.to(device)
-                labels = labels.to(device)
+                image = image.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
 
                 out = model(image)['out']
                 loss = loss_function(out, labels)
