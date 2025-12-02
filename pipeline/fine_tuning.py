@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from src.models.deeplabv3_mnv3 import get_empty_model, save_model, load_model
+from tqdm import tqdm
 
 training_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/train"
 training_label_folder = "./data/gtFine_trainId/gtFine/train"
@@ -23,8 +24,8 @@ if __name__ == "__main__":
     validation_dataset = cityScapesDataset(validation_image_folder, validation_label_folder, config['training']['val_transforms'])
 
     print("Preparing Training and Validation Dataloader ...")
-    training_loader = DataLoader(training_dataset, batch_size, shuffle=True)
-    validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True)
+    training_loader = DataLoader(training_dataset, batch_size, shuffle=True, num_workers=2, pin_memory=True)
+    validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
     device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using Device: {device}")
@@ -53,10 +54,9 @@ if __name__ == "__main__":
     best_validation_loss = float('inf')
     print("Starting Fine-Tuning ...")
     for epoch in range(epochs):
-        print(f"--- Epoch {epoch} ---")
         model.train()
         training_loss = 0
-        for image, labels in training_loader:
+        for image, labels in tqdm(training_loader, desc=f"Training Epoch {epoch}"):
             image = image.to(device)
             labels = labels.to(device)
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         model.eval()
         validation_loss = 0
         with torch.no_grad():
-            for image, labels in validation_loader:
+            for image, labels in tqdm(validation_loader, desc=f"Validation Epoch {epoch}"):
                 image = image.to(device)
                 labels = labels.to(device)
 
