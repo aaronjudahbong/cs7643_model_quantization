@@ -16,6 +16,7 @@ from torchvision.transforms import functional as F
 
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from .quantization_utils import set_seed, build_qconfig
+from pipeline.create_dataset import cityScapesDataset
 
 class TrainValDataset(Dataset):
     # Similar to cityScapesDataset (create_dataset.py) but only returns images.
