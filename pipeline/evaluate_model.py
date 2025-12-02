@@ -1,0 +1,133 @@
+import torch
+from torch.utils.data import DataLoader
+from pipeline.create_dataset import cityScapesDataset
+from pipeline.metrics import calculate_miou, calculate_model_size, measure_inference_latency
+from src.models.deeplabv3_mnv3 import get_empty_model, load_model
+import argparse
+
+# Default paths 
+validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
+validation_label_folder = "./data/gtFine_trainId/gtFine/val"
+
+def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str, device: str = None, batch_size: int = 1) -> dict:
+    """
+    Evaluate a model checkpoint with metrics mIoU, model size, and inference latency.
+    
+    Args:
+        model_path: Path to model checkpoint (.pth file)
+        val_image_folder: Path to validation images
+        val_label_folder: Path to validation labels
+        device: Device to use ('cpu', 'cuda', 'mps', or None)
+        batch_size: Batch size for inference
+    
+    Returns: 
+        Dictionary with metrics:
+            'miou': mIoU score
+            'model_size_mb': model size in MB
+            'latency_stats': Dictionary with latency statistics (mean, std, median) in milliseconds
+    """
+    # Set device 
+    if device is None:
+        device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    print(f"Using device: {device}")
+    print(f"Loading model from: {model_path}")
+    
+    # Load model
+    model = get_empty_model(num_classes=19) # get model architecture
+    model = load_model(model, model_path, device=device) # load model weights 
+    model = model.to(device)
+    model.eval()
+    
+    # Calculate model size
+    model_size_mb = calculate_model_size(model)
+    print(f"\nModel Size: {model_size_mb:.2f} MB (in memory)")
+    
+    # Load validation dataset
+    print(f"\nLoading validation dataset...")
+    val_dataset = cityScapesDataset(val_image_folder, val_label_folder, transformations=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    
+    # Measure inference latency on a dummy sample
+    print(f"\nMeasuring inference latency...")
+    sample_image, _ = next(iter(val_loader))
+    sample_image = sample_image.to(device)
+    latency_stats = measure_inference_latency(
+        model, 
+        sample_image.shape[1:],  # (C, H, W)
+        device,
+        num_warmup=10,
+        num_runs=100
+    )
+    print(f"Inference Latency:")
+    print(f"  Mean: {latency_stats['mean_ms']:.2f} ± {latency_stats['std_ms']:.2f} ms")
+    print(f"  Median: {latency_stats['median_ms']:.2f} ms")
+    
+    # Run inference on full validation set and calculate mIoU
+    print(f"\nRunning inference on validation set...")
+    all_predictions = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for i, (image, labels) in enumerate(val_loader):
+            image = image.to(device)
+            
+            # Run inference
+            out = model(image)['out']
+            preds = out.argmax(dim=1)
+            
+            all_predictions.append(preds.cpu())
+            all_targets.append(labels)
+            
+            if (i + 1) % 10 == 0:
+                print(f"  Completed {i + 1}/{len(val_loader)}")
+    
+    # Concatenate all predictions and targets
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    
+    # Calculate mIoU
+    print(f"\nCalculating mIoU...")
+    miou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    print(f"mIoU: {miou:.4f}")
+    
+    # Summary
+    print(f"\n{'='*50}")
+    print(f"EVALUATION SUMMARY")
+    print(f"{'='*50}")
+    print(f"Model Size: {model_size_mb:.2f} MB")
+    print(f"Inference Latency: {latency_stats['mean_ms']:.2f} ± {latency_stats['std_ms']:.2f} ms")
+    print(f"mIoU: {miou:.4f}")
+    print(f"{'='*50}")
+    
+    return {
+        'miou': miou,
+        'model_size_mb': model_size_mb,
+        'latency_stats': latency_stats
+    }
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Evaluate a model checkpoint')
+    parser.add_argument('--model', type=str, required=True,
+                    help='Path to model checkpoint (.pth file)')
+    parser.add_argument('--val_images', type=str, 
+                    default=validation_image_folder,
+                    help='Path to validation images folder')
+    parser.add_argument('--val_labels', type=str,
+                    default=validation_label_folder,
+                    help='Path to validation labels folder')
+    parser.add_argument('--device', type=str, default=None,
+                    choices=['cpu', 'cuda', 'mps', None],
+                    help='Device to use (auto-detect if not specified)')
+    parser.add_argument('--batch_size', type=int, default=1,
+                    help='Batch size for inference')
+    
+    args = parser.parse_args()
+    
+    evaluate_model(
+        model_path=args.model,
+        val_image_folder=args.val_images,
+        val_label_folder=args.val_labels,
+        device=args.device,
+        batch_size=args.batch_size
+    )
