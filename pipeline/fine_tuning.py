@@ -34,8 +34,13 @@ if __name__ == "__main__":
     for parameter in model.parameters():
         parameter.requires_grad = False
 
+    # Unfreeze last 3 classifier layers
     for name, param in model.named_parameters():
-        if 'classifier.2' in name or 'classifier.4' in name or 'aux_classifier.4' in name:
+        if (
+            "classifier.1" in name or   # Conv2d
+            "classifier.2" in name or   # BatchNorm2d
+            "classifier.4" in name      # Conv2d
+        ):
             param.requires_grad = True
 
     loss_function = nn.CrossEntropyLoss(ignore_index=255)
