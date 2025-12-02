@@ -22,6 +22,7 @@ if __name__ == "__main__":
     training_dataset = cityScapesDataset(training_image_folder, training_label_folder, config['training']['train_transforms'])
     validation_dataset = cityScapesDataset(validation_image_folder, validation_label_folder, config['training']['val_transforms'])
 
+    print("Preparing Training and Validation Dataloader ...")
     training_loader = DataLoader(training_dataset, batch_size, shuffle=True)
     validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True)
 
@@ -30,6 +31,7 @@ if __name__ == "__main__":
     model = load_model(get_empty_model(19), "./models/baseline_init_model.pth", device=device)
     model = model.to(device)
 
+    print("Preparing model for fine-tuning ...")
     #Freeze all but the last 3 layers. Only optimize these
     for parameter in model.parameters():
         parameter.requires_grad = False
@@ -48,7 +50,9 @@ if __name__ == "__main__":
                                                 weight_decay=float(config['training']['weight_decay']))
 
     epochs = config['training']['epochs']
+    print("Starting Fine-Tuning ...")
     for epoch in range(epochs):
+        print(f"--- Epoch {epoch} ---")
         model.train()
         training_loss = 0
         for image, labels in training_loader:
