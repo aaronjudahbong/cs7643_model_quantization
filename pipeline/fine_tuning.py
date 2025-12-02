@@ -50,16 +50,20 @@ if __name__ == "__main__":
                                                 weight_decay=float(config['training']['weight_decay']))
 
     epochs = config['training']['epochs']
+    best_validation_loss = float('inf')
     print("Starting Fine-Tuning ...")
     for epoch in range(epochs):
         print(f"--- Epoch {epoch} ---")
         model.train()
         training_loss = 0
         for image, labels in training_loader:
+            image = image.to(device)
+            labels = labels.to(device)
+
             optimizer.zero_grad()
             out = model(image)['out']
             loss = loss_function(out, labels)
-            training_loss += loss
+            training_loss += loss.item()
             loss.backward()
             optimizer.step()
         
@@ -67,11 +71,28 @@ if __name__ == "__main__":
         validation_loss = 0
         with torch.no_grad():
             for image, labels in validation_loader:
+                image = image.to(device)
+                labels = labels.to(device)
+
                 out = model(image)['out']
                 loss = loss_function(out, labels)
-                validation_loss += loss
+                validation_loss += loss.item()
         
         average_training_loss = training_loss / len(training_loader)
         average_validation_loss = validation_loss / len(validation_loader)
         print(f"Epoch: {epoch}, Training Loss: {average_training_loss}, Validation Loss: {average_validation_loss}")
-        
+
+        # Always save the latest model.
+        save_model(model, f"./models/finetuned_model_last_epoch.pth")
+
+        # Log training progress to a text file (append)
+        with open("./models/finetuned_model_progress.txt", "a") as f:
+            f.write(
+                f"Epoch {epoch}: Training Loss={average_training_loss:.6f}, "
+                f"Validation Loss={average_validation_loss:.6f}\n"
+            )
+
+        # Save model if validation loss improved
+        if average_validation_loss < best_validation_loss:
+            best_validation_loss = average_validation_loss
+            save_model(model, f"./models/finetuned_model_best_epoch_{epoch:03d}.pth")
