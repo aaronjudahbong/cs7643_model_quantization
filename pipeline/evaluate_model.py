@@ -5,7 +5,7 @@ from pipeline.metrics import calculate_miou, calculate_model_size, measure_infer
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 import argparse
 
-# Default paths 
+# Set default paths 
 validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
 validation_label_folder = "./data/gtFine_trainId/gtFine/val"
 
@@ -28,7 +28,6 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
             'model_size_mb': model size in MB
             'latency_stats': Dictionary with latency statistics (mean, std, median) in milliseconds
     """
-    # Set device 
     if device is None:
         device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -43,17 +42,18 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     
     # Calculate model size
     model_size_mb = calculate_model_size(model, quantization_bits=quantization_bits)
-    print(f"\nModel Size: {model_size_mb:.2f} MB (in memory)")
+    print(f"\nModel Size: {model_size_mb:.2f} MB")
     
     # Load validation dataset
     print(f"\nLoading validation dataset...")
-    val_dataset = cityScapesDataset(val_image_folder, val_label_folder, transformations=False)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    val_transforms = {'crop': False, 'resize': False, 'flip': False}
+    val_dataset = cityScapesDataset(val_image_folder, val_label_folder, val_transforms)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
     
     # Measure inference latency on a dummy sample
     print(f"\nMeasuring inference latency...")
     sample_image, _ = next(iter(val_loader))
-    sample_image = sample_image.to(device)
+    sample_image = sample_image.to(device, non_blocking=True)
     latency_stats = measure_inference_latency(
         model, 
         sample_image.shape[1:],  # (C, H, W)
@@ -72,9 +72,8 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     
     with torch.no_grad():
         for i, (image, labels) in enumerate(val_loader):
-            image = image.to(device)
+            image = image.to(device, non_blocking=True)
             
-            # Run inference
             out = model(image)['out']
             preds = out.argmax(dim=1)
             
@@ -93,7 +92,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     miou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
     
-    # Summary
+    # Print summary
     print(f"\n{'='*50}")
     print(f"EVALUATION SUMMARY")
     print(f"{'='*50}")
