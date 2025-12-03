@@ -1,6 +1,8 @@
 import yaml
 from pipeline.create_dataset import cityScapesDataset
 import torch
+import random
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -12,9 +14,18 @@ training_label_folder = "./data/gtFine_trainId/gtFine/train"
 validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
 validation_label_folder = "./data/gtFine_trainId/gtFine/val"
 
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+
 if __name__ == "__main__":
     # Load configuration.
     print("----- Running FP Training Script -----")
+    set_seed()
     with open("configs/ptq.yaml", "r") as f:
         config = yaml.safe_load(f)["fp"]
 
@@ -37,7 +48,18 @@ if __name__ == "__main__":
     for parameter in model.parameters():
         parameter.requires_grad = False
 
-    # Unfreeze last 3 classifier layers
+    # Unfreeze ASPP Layers. 
+    aspp_params = []
+    for name, param in model.named_parameters():
+        if ("classifier.0.convs.1" in name or
+            "classifier.0.convs.2" in name or
+            "classifier.0.convs.3" in name or
+            "classifier.0.project" in name):
+            param.requires_grad = True
+            aspp_params.append(param)
+
+    # Unfreeze Classifier Layers.
+    classifier_params = []
     for name, param in model.named_parameters():
         if (
             "classifier.1" in name or   # Conv2d
@@ -45,10 +67,13 @@ if __name__ == "__main__":
             "classifier.4" in name      # Conv2d
         ):
             param.requires_grad = True
+            classifier_params.append(param)
 
     loss_function = nn.CrossEntropyLoss(ignore_index=255)
-    optimizer = optim.Adam([param for param in model.parameters() if param.requires_grad], lr=float(config['training']['learning_rate']),
-                                                weight_decay=float(config['training']['weight_decay']))
+    optimizer = optim.Adam([
+        {"params": aspp_params, "lr": float(config['training']['aspp_learning_rate'])},
+        {"params": classifier_params, "lr": float(config['training']['learning_rate'])}
+    ], weight_decay=float(config['training']['weight_decay']))
 
     epochs = config['training']['epochs']
     best_validation_loss = float('inf')
