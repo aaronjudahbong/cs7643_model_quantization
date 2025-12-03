@@ -56,7 +56,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     sample_image = sample_image.to(device, non_blocking=True)
     latency_stats = measure_inference_latency(
         model, 
-        sample_image.shape[1:],  # (C, H, W)
+        sample_image.shape[1:],
         device,
         num_warmup=10,
         num_runs=100
@@ -65,7 +65,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     print(f"  Mean: {latency_stats['mean_ms']:.2f} ± {latency_stats['std_ms']:.2f} ms")
     print(f"  Median: {latency_stats['median_ms']:.2f} ms")
     
-    # Run inference on full validation set and calculate mIoU
+    # Run inference on full validation set
     print(f"\nRunning inference on validation set...")
     all_predictions = []
     all_targets = []
@@ -82,8 +82,6 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
             
             if (i + 1) % 10 == 0:
                 print(f"  Completed {i + 1}/{len(val_loader)}")
-    
-    # Concatenate all predictions and targets
     all_predictions = torch.cat(all_predictions, dim=0)
     all_targets = torch.cat(all_targets, dim=0)
     
