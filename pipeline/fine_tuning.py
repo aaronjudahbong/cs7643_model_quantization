@@ -75,6 +75,11 @@ if __name__ == "__main__":
         {"params": classifier_params, "lr": float(config['training']['learning_rate'])}
     ], weight_decay=float(config['training']['weight_decay']))
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer
+    )
+
+
     epochs = config['training']['epochs']
     best_validation_loss = float('inf')
     print("Starting Fine-Tuning ...")
@@ -105,6 +110,8 @@ if __name__ == "__main__":
         
         average_training_loss = training_loss / len(training_loader)
         average_validation_loss = validation_loss / len(validation_loader)
+
+        scheduler.step(average_validation_loss)
         print(f"Epoch: {epoch}, Training Loss: {average_training_loss}, Validation Loss: {average_validation_loss}")
 
         # Always save the latest model.
