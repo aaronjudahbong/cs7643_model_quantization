@@ -9,7 +9,8 @@ import argparse
 validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
 validation_label_folder = "./data/gtFine_trainId/gtFine/val"
 
-def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str, device: str = None, batch_size: int = 1) -> dict:
+def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str, 
+                   device: str = None, batch_size: int = 1, quantization_bits: int = 8) -> dict:
     """
     Evaluate a model checkpoint with metrics mIoU, model size, and inference latency.
     
@@ -19,6 +20,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
         val_label_folder: Path to validation labels
         device: Device to use ('cpu', 'cuda', 'mps', or None)
         batch_size: Batch size for inference
+        quantization_bits: Quantization bits for model size calculation
     
     Returns: 
         Dictionary with metrics:
@@ -40,7 +42,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     model.eval()
     
     # Calculate model size
-    model_size_mb = calculate_model_size(model)
+    model_size_mb = calculate_model_size(model, quantization_bits=quantization_bits)
     print(f"\nModel Size: {model_size_mb:.2f} MB (in memory)")
     
     # Load validation dataset
@@ -121,7 +123,8 @@ if __name__ == "__main__":
                     help='Device to use (auto-detect if not specified)')
     parser.add_argument('--batch_size', type=int, default=1,
                     help='Batch size for inference')
-    
+    parser.add_argument('--quantization_bits', type=int, default=8,
+                    help='Quantization bits for model size calculation')
     args = parser.parse_args()
     
     evaluate_model(
@@ -129,5 +132,6 @@ if __name__ == "__main__":
         val_image_folder=args.val_images,
         val_label_folder=args.val_labels,
         device=args.device,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        quantization_bits=args.quantization_bits
     )
