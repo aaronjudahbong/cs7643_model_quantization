@@ -44,7 +44,9 @@ def calculate_miou(predictions: torch.Tensor, targets: torch.Tensor, num_classes
 
 def calculate_model_size(model: torch.nn.Module, quantization_bits: int = None) -> float:
     """
-    Calculate model memory size in MB from model's parameters and buffers.
+    Calculate model memory size in MB from model's parameters and buffers. Works on both 
+    non-quantized and quantized models, provided the quantized model is converted using 
+    quantize_fx.convert_fx.
     
     Args:
         model: PyTorch model
@@ -57,7 +59,6 @@ def calculate_model_size(model: torch.nn.Module, quantization_bits: int = None) 
     """
     # Calculate size from model parameters
     if quantization_bits is not None:
-        # quantization_bits / 8 gives bytes per element
         bytes_per_element = quantization_bits / 8.0
         param_size = sum(p.numel() * bytes_per_element for p in model.parameters())
     else:
