@@ -35,8 +35,8 @@ if __name__ == "__main__":
     validation_dataset = cityScapesDataset(validation_image_folder, validation_label_folder, config['training']['val_transforms'])
 
     print("Preparing Training and Validation Dataloader ...")
-    training_loader = DataLoader(training_dataset, batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True, num_workers=2, pin_memory=True)
+    training_loader = DataLoader(training_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    validation_loader = DataLoader(validation_dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
     device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using Device: {device}")
@@ -128,3 +128,7 @@ if __name__ == "__main__":
         if average_validation_loss < best_validation_loss:
             best_validation_loss = average_validation_loss
             save_model(model, f"./models/finetuned_model_best_epoch_{epoch:03d}.pth")
+        
+        # Save model every 5 epochs.
+        if (epoch + 1) % 5 == 0:
+            save_model(model, f"./models/finetuned_model_epoch_{epoch:03d}.pth")

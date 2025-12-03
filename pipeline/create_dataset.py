@@ -46,14 +46,17 @@ class cityScapesDataset(Dataset):
 
         # Apply random scaling to image and mask
         if self.to_resize:
-            if random.random() < 0.5:
-                # scaling shall be in the range (https://arxiv.org/pdf/1706.05587):
-                scales = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-                # https://numpy.org/doc/stable/reference/random/generated/numpy.random.choice.html
-                scale = np.random.choice(scales)
-                width, height = int(scale*image.size[0]), int(scale*image.size[1])
-                image = F.resize(image, size=(height, width), interpolation=F.InterpolationMode.BILINEAR)
-                label = F.resize(label, size=(height, width), interpolation=F.InterpolationMode.NEAREST)
+            # Data augmentation: We apply data augmentation by
+            # randomly scaling the input images (from 0.5 to 2.0) and
+            # randomly left-right flipping during training.
+            # scaling shall be in the range (https://arxiv.org/pdf/1706.05587):
+            # scales = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+            scale = random.uniform(0.5, 2.0)
+            # # https://numpy.org/doc/stable/reference/random/generated/numpy.random.choice.html
+            # scale = np.random.choice(scales)
+            width, height = int(scale*image.size[0]), int(scale*image.size[1])
+            image = F.resize(image, size=(height, width), interpolation=F.InterpolationMode.BILINEAR)
+            label = F.resize(label, size=(height, width), interpolation=F.InterpolationMode.NEAREST)
 
         # Apply random crop to image and mask
         if self.to_crop:
