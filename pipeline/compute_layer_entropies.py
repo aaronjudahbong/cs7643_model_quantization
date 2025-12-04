@@ -107,11 +107,16 @@ if __name__ == "__main__":
         layer_entropies[layer_name] = entropy
 
 
-    # Save results
-    output_file = "results/fp32_model_layer_entropies.json"
-    with open(output_file, "w") as f:
+    # Save results: entropies and activations
+    entropies_output_file = "results/fp32_model_layer_entropies.json"
+    with open(entropies_output_file, "w") as f:
         json.dump(layer_entropies, f, indent=2)
-    print(f"\nEntropies saved to {output_file}")
+    print(f"\nEntropies saved to {entropies_output_file}")
+
+    activations_output_file = "results/fp32_model_layer_activations.json"
+    with open(activations_output_file, "w") as f:
+        json.dump(activation_buffers, f, indent=2)
+    print(f"\nActivations saved to {activations_output_file}")
 
     # Print results 
     print(f"\n{'='*50}")
