@@ -73,7 +73,7 @@ if __name__ == "__main__":
     with open("configs/ptq.yaml", "r") as f:
         config = yaml.safe_load(f)
     batch_size = config["fp"]['training']['batch_size']
-    transforms = config["fp"]['training']['train_transforms'] # simulate training conditions
+    transforms = config["fp"]['training']['val_transforms'] # no transformations
 
     # Load data 
     print("Loading Cityscapes training dataset...")
