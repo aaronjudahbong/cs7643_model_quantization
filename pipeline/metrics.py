@@ -116,12 +116,13 @@ def calculate_model_size_mixed_precision(model: torch.nn.Module, quantization_bi
                 # Only count if module has parameters (to avoid noise from modules without params)
                 if sum(1 for _ in module.parameters(recurse=False)) > 0:
                     unmatched_modules.append(module_name)
-                    # Use actual size as fallback (shouldn't happen if bit depths are correct)
+                    # Use int8 as fallback
+                    bytes_per_element = 1.0 
                     for param in module.parameters(recurse=False):
-                        param_size += param.numel() * param.element_size()
+                        param_size += param.numel() * bytes_per_element
         
         if unmatched_modules:
-            print(f"Warning: {len(unmatched_modules)} modules with parameters not found in layer_bit_depths, using actual size")
+            print(f"Warning: {len(unmatched_modules)} modules with parameters not found in layer_bit_depths, using int8 size")
     elif quantization_bits is not None:
         # Uniform quantization
         bytes_per_element = quantization_bits / 8.0
