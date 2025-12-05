@@ -99,16 +99,23 @@ if __name__ == "__main__":
     training_dataset = cityScapesDataset(train_image_folder, train_label_folder, transforms)
     training_loader = DataLoader(training_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True) # same as fine_tuning.py
 
-    # Collect activations through a single forward pass (match fine_tuning.py)
-    print("Collecting activations (one full training epoch)...")
-    print(f"Batch size: {batch_size}, Total batches: {len(training_loader)}")
+    # Collect activations through 128 images only
+    num_images = 128
+    num_batches = (num_images + batch_size - 1) // batch_size  # Ceiling division
+    print(f"Collecting activations from {num_images} images ({num_batches} batches)...")
+    print(f"Batch size: {batch_size}")
 
     with torch.no_grad():
+        image_count = 0
         for images, _ in tqdm(training_loader, desc="Collecting activations"):
             images = images.to(device, non_blocking=True)
             
             # hooks are automatically called on intermediate layers with forward pass
             _ = model(images)
+            
+            image_count += images.size(0)
+            if image_count >= num_images:
+                break
 
     # Compute per-layer entropies on captured activations
     print("\nComputing per-layer entropies...")
