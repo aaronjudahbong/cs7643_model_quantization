@@ -13,6 +13,7 @@ from tqdm import tqdm
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model, save_model
 from .quantization_utils import set_seed
 from pipeline.create_dataset import cityScapesDataset
+from pipeline.metrics import calculate_miou, calculate_model_size_mixed_precision
 
 def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = None) -> tq.QConfig:
     """
@@ -286,17 +287,44 @@ if __name__ == "__main__":
         training_history["val_loss"].append(avg_val_loss)
         
         # Always save latest model
-        save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
+        # save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
+        torch.save(prepared_model, "./models/mixed_precision_last_epoch.pth")
     
-    # Convert to quantized model
-    print("Converting to quantized model...")
-    # must move model to CPU to convert, else it errors!
-    prepared_model = prepared_model.cpu()
-    quantized_model = quantize_fx.convert_fx(prepared_model.eval())
+    # calculate model size 
+    print(f"Calculating model size...")
+    model_size_mb = calculate_model_size_mixed_precision(prepared_model, layer_bit_depths=layer_bit_depths)
+    print(f"\nModel Size: {model_size_mb:.2f} MB")
     
+    # Run inference on full validation set and calculate mIoU
+    print(f"\nRunning inference on validation set...")
+    all_predictions = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for i, (image, labels) in enumerate(tqdm(val_loader, desc="Validation inference")):
+            image = image.to(device, non_blocking=True)
+            
+            out = prepared_model(image)['out']
+            preds = out.argmax(dim=1)
+            
+            all_predictions.append(preds.cpu())
+            all_targets.append(labels)
+            
+            if (i + 1) % 10 == 0:
+                print(f"  Completed {i + 1}/{len(val_loader)}")
+    
+    # Concatenate all predictions and targets
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    
+    # Calculate mIoU
+    print(f"\nCalculating mIoU...")
+    miou, iou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    print(f"mIoU: {miou:.4f}")
+
     # Save model
     output_path = "models/mixed_precision_model.pth"
-    save_model(quantized_model, output_path)
+    save_model(prepared_model, output_path)
     print(f"Mixed-precision model saved to {output_path}")
     
     # Save training history
