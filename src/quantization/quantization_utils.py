@@ -28,15 +28,12 @@ def build_qconfig(quantization_type, config):
     if mode == "int8":
         weight_quant_min, weight_quant_max = -128, 127
         act_quant_min, act_quant_max = 0, 127 # reduce_range = True
-        hardsigmoid_act_scale = 1.0 / 128.0
     elif mode == "int6":
         weight_quant_min, weight_quant_max = -32, 31
         act_quant_min, act_quant_max = 0, 31 # reduce_range = True
-        hardsigmoid_act_scale = 1.0 / 32.0
     elif mode == "int4":
         weight_quant_min, weight_quant_max = -8, 7
         act_quant_min, act_quant_max = 0, 7 # reduce_range = True
-        hardsigmoid_act_scale = 1.0 / 8.0
     else:
         raise ValueError(f"Mode {mode} not supported - must be 'int8', 'int6', 'int4', or 'default'")
 
@@ -90,7 +87,7 @@ def build_qconfig(quantization_type, config):
     fixed_qconfig = tq.QConfig(
         activation = tq.FixedQParamsObserver.with_args(
             dtype= torch.quint8,
-            scale = hardsigmoid_act_scale,
+            scale = 1.0 / 256.0,
             zero_point = 0,
         ),
         weight = weight_observer,
