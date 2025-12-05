@@ -53,8 +53,8 @@ def hook(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor) -> 
 
 if __name__ == "__main__":
     # load pre-trained full-precision model
-    print("Loading baseline model...")
-    model_checkpoint = "./models/baseline_init_model.pth"  # TODO: CHANGE TO FINETUNED MODEL 
+    print("Loading fine-tuned model...")
+    model_checkpoint = "./models/finetuned_model_last_epoch.pth"  # TODO: CHANGE TO FINETUNED MODEL 
     device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using Device: {device}")
     model = get_empty_model(num_classes=19)
