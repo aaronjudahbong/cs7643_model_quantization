@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from collections import defaultdict
 import numpy as np
 import yaml
 import json
@@ -9,7 +8,7 @@ from tqdm import tqdm
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from pipeline.create_dataset import cityScapesDataset
 
-def compute_entropy(values: np.ndarray, num_bins: int = 256) -> float: # TODO: HOW MANY BINS? 
+def compute_entropy(values: np.ndarray, num_bins: int = 512) -> float: # TODO: HOW MANY BINS? 512 for now from Freedman-Diaconis rule
     """
     Compute Shannon entropy from activation values.
     
@@ -103,20 +102,15 @@ if __name__ == "__main__":
             continue
 
         activations_concatenated = np.concatenate(activations, axis=0) # concatenate all activations for each layer into one 1D array
+        print(f"Layer {layer_name} has {len(activations_concatenated)} activations") 
         entropy = compute_entropy(activations_concatenated)
-        layer_entropies[layer_name] = entropy
+        layer_entropies[layer_name] = float(entropy)  # Convert numpy float to Python float for JSON
 
-
-    # Save results: entropies and activations
+    # Save results
     entropies_output_file = "results/fp32_model_layer_entropies.json"
     with open(entropies_output_file, "w") as f:
         json.dump(layer_entropies, f, indent=2)
     print(f"\nEntropies saved to {entropies_output_file}")
-
-    activations_output_file = "results/fp32_model_layer_activations.json"
-    with open(activations_output_file, "w") as f:
-        json.dump(activation_buffers, f, indent=2)
-    print(f"\nActivations saved to {activations_output_file}")
 
     # Print results 
     print(f"\n{'='*50}")
