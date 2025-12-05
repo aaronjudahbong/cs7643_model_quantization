@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Read config to get settings for data loading
     with open("configs/ptq.yaml", "r") as f:
         config = yaml.safe_load(f)
-    batch_size = 1024 # hard code 
+    batch_size = config["fp"]['training']['batch_size']
     transforms = config["fp"]['training']['val_transforms'] # no transformations
 
     # Load data 
