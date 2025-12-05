@@ -71,9 +71,7 @@ def calculate_model_size(model: torch.nn.Module, quantization_bits: int = None) 
     
     return model_size_mb
 
-def calculate_model_size_mixed_precision(model: torch.nn.Module, 
-                                         quantization_bits: Optional[int] = None, 
-                                         layer_bit_depths: Optional[Union[Dict[str, int], str]] = None) -> float:
+def calculate_model_size_mixed_precision(model: torch.nn.Module, quantization_bits: Optional[int] = None, layer_bit_depths: Optional[Union[Dict[str, int], str]] = None) -> float:
     """
     Calculate model memory size in MB from model's parameters and buffers. Works on both 
     non-quantized and quantized models, provided the quantized model is converted using 
