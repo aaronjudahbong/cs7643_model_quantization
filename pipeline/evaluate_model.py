@@ -4,6 +4,7 @@ from pipeline.create_dataset import cityScapesDataset
 from pipeline.metrics import calculate_miou, calculate_model_size, measure_inference_latency
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 import argparse
+import os
 
 # Set default paths 
 validation_image_folder = "./data/leftImg8bit_trainvaltest/leftImg8bit/val"
@@ -56,7 +57,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     sample_image = sample_image.to(device, non_blocking=True)
     latency_stats = measure_inference_latency(
         model, 
-        sample_image.shape[1:],
+        sample_image.shape[1:],  # (C, H, W)
         device,
         num_warmup=10,
         num_runs=100
@@ -65,7 +66,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     print(f"  Mean: {latency_stats['mean_ms']:.2f} ± {latency_stats['std_ms']:.2f} ms")
     print(f"  Median: {latency_stats['median_ms']:.2f} ms")
     
-    # Run inference on full validation set
+    # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
     all_predictions = []
     all_targets = []
@@ -82,12 +83,14 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
             
             if (i + 1) % 10 == 0:
                 print(f"  Completed {i + 1}/{len(val_loader)}")
+    
+    # Concatenate all predictions and targets
     all_predictions = torch.cat(all_predictions, dim=0)
     all_targets = torch.cat(all_targets, dim=0)
     
     # Calculate mIoU
     print(f"\nCalculating mIoU...")
-    miou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    miou, iou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
     
     # Print summary
@@ -101,6 +104,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     
     return {
         'miou': miou,
+        'iou': iou,
         'model_size_mb': model_size_mb,
         'latency_stats': latency_stats
     }
@@ -124,7 +128,7 @@ if __name__ == "__main__":
                     help='Quantization bits for model size calculation')
     args = parser.parse_args()
     
-    evaluate_model(
+    evaluation = evaluate_model(
         model_path=args.model,
         val_image_folder=args.val_images,
         val_label_folder=args.val_labels,
@@ -132,3 +136,35 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         quantization_bits=args.quantization_bits
     )
+
+    miou = evaluation['miou']
+    iou = evaluation['iou']
+    model_size = evaluation['model_size_mb']
+    latency = evaluation['latency_stats']
+    model_name = (os.path.basename(args.model)).split(".")[0]
+
+    with open(f"./results/{model_name}_evaluation.txt", "a") as f:
+        f.write(
+            f"mIoU: {miou}, \n"
+            f"Class 0 IoU: {iou[0]}, \n"
+            f"Class 1 IoU: {iou[1]}, \n"
+            f"Class 2 IoU: {iou[2]}, \n"
+            f"Class 3 IoU: {iou[3]}, \n"
+            f"Class 4 IoU: {iou[4]}, \n"
+            f"Class 5 IoU: {iou[5]}, \n"
+            f"Class 6 IoU: {iou[6]}, \n"
+            f"Class 7 IoU: {iou[7]}, \n"
+            f"Class 8 IoU: {iou[8]}, \n"
+            f"Class 9 IoU: {iou[9]}, \n"
+            f"Class 10 IoU: {iou[10]}, \n"
+            f"Class 11 IoU: {iou[11]}, \n"
+            f"Class 12 IoU: {iou[12]}, \n"
+            f"Class 13 IoU: {iou[13]}, \n"
+            f"Class 14 IoU: {iou[14]}, \n"
+            f"Class 15 IoU: {iou[15]}, \n"
+            f"Class 16 IoU: {iou[16]}, \n"
+            f"Class 17 IoU: {iou[17]}, \n"
+            f"Class 18 IoU: {iou[18]}, \n\n"
+            f"Model Size (MB): {model_size}, \n"
+            f"Latency: {latency}\n"
+        )

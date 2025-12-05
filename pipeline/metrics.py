@@ -14,7 +14,7 @@ def calculate_miou(predictions: torch.Tensor, targets: torch.Tensor, num_classes
         ignore_index: Class index to ignore in calculation
     
     Returns:
-        mIoU score (float)
+        (mIoU score (float), IoU (list))
     """
     # Create mask for valid pixels
     pred_flat = predictions.flatten()
@@ -39,7 +39,7 @@ def calculate_miou(predictions: torch.Tensor, targets: torch.Tensor, num_classes
         iou = intersection / union
         ious.append(iou)
     
-    return np.mean(ious) if len(ious) > 0 else 0.0
+    return (np.mean(ious), ious) if len(ious) > 0 else (0.0, [0.0])
 
 
 def calculate_model_size(model: torch.nn.Module, quantization_bits: int = None) -> float:
