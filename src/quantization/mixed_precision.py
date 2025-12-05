@@ -290,6 +290,8 @@ if __name__ == "__main__":
     
     # Convert to quantized model
     print("Converting to quantized model...")
+    # must move model to CPU to convert, else it errors!
+    prepared_model = prepared_model.cpu()
     quantized_model = quantize_fx.convert_fx(prepared_model.eval())
     
     # Save model
