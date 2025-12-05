@@ -14,6 +14,11 @@ from src.models.deeplabv3_mnv3 import get_empty_model, load_model, save_model
 from .quantization_utils import set_seed
 from pipeline.create_dataset import cityScapesDataset
 from pipeline.metrics import calculate_miou, calculate_model_size_mixed_precision
+import matplotlib.pyplot as plt
+from src.scripts.mappings import map_train_id_to_color
+from PIL import Image
+import torchvision.transforms as T
+import torchvision.transforms.functional as F
 
 def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = None) -> tq.QConfig:
     """
@@ -287,8 +292,7 @@ if __name__ == "__main__":
         training_history["val_loss"].append(avg_val_loss)
         
         # Always save latest model
-        # save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
-        torch.save(prepared_model, "./models/mixed_precision_last_epoch.pth")
+        save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
     
     # calculate model size 
     print(f"Calculating model size...")
@@ -338,3 +342,51 @@ if __name__ == "__main__":
     with open(bit_depth_output, "w") as f:
         json.dump(layer_bit_depths, f, indent=2)
     print(f"Bit depth assignments saved to {bit_depth_output}")
+
+
+    # Visualization
+    print("----- Visualizing Inference Results -----")
+    # Load Image
+    sample_folder = "frankfurt"
+    sample_id = "000000_001751"
+    image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
+    ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
+    image = Image.open(image_path).convert("RGB")
+    # Normalize image.
+    normalize_image = T.Normalize(
+        mean = [0.485, 0.456, 0.406],
+        std = [0.229, 0.224, 0.225]
+    )
+    image_tensor = F.to_tensor(image)
+    image_tensor = normalize_image(image_tensor)
+    image_tensor = image_tensor.unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        output = prepared_model(image_tensor)['out']
+        predicted_mask = torch.argmax(output.squeeze(), dim=0).detach().cpu().numpy()
+
+    # Map train IDs to colors for visualization
+    height, width = predicted_mask.shape
+    color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+    for train_id, color in map_train_id_to_color.items():
+        color_mask[predicted_mask == train_id] = color  
+
+    # Display original image and predicted mask
+    plt.figure(constrained_layout=True)
+    plt.subplot(1, 3, 1)
+    plt.title("Original Image")
+    plt.imshow(image)
+    plt.axis("off")
+
+    plt.subplot(1, 3, 2)
+    plt.title("Ground Truth Mask")
+    ground_truth = Image.open(ground_truth_path)
+    plt.imshow(ground_truth)
+    plt.axis("off")
+
+    plt.subplot(1, 3, 3)
+    plt.title("Predicted Mask")
+    plt.imshow(color_mask)
+    plt.axis("off")
+    plt.savefig("./results/mixed_precision_visualization.png")
+    plt.close()
