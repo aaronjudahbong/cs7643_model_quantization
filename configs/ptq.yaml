@@ -40,10 +40,14 @@ qat:
     batch_size: 2
     learning_rate: 1e-4
     weight_decay: 1e-5
-    transforms:
+    train_transforms:
       crop: True
       resize: True
       flip: True
+    val_transforms:
+      crop: False
+      resize: False
+      flip: False
 
   skip_aspp: True
 

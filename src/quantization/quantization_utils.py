@@ -44,8 +44,8 @@ def build_qconfig(quantization_type, config):
     # Define weight scheme based on granularity (keep it symmetric).
     # If per_channel need to use PerChannelMinMaxObserver, else use MinMaxObserver.
     weights_granularity = config["weights"]["granularity"]
+    weight_scheme = torch.per_channel_symmetric
     if weights_granularity == "per_channel":
-        weight_scheme = torch.per_channel_symmetric
         weight_observer = tq.PerChannelMinMaxObserver.with_args(
             dtype=weight_dtype,
             qscheme=weight_scheme,
@@ -53,7 +53,6 @@ def build_qconfig(quantization_type, config):
             quant_max=weight_quant_max,
         )
     elif weights_granularity == "per_tensor":
-        weight_scheme = torch.per_tensor_symmetric
         weight_observer = tq.MinMaxObserver.with_args(
             dtype=weight_dtype,
             qscheme=weight_scheme,
