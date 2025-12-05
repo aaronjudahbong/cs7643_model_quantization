@@ -206,7 +206,7 @@ if __name__ == "__main__":
     val_img_path = "data/leftImg8bit_trainvaltest/leftImg8bit/val"
     val_label_path = "data/gtFine_trainId/gtFine/val"
     
-    train_transforms = qat_config['training']['transforms']
+    train_transforms = qat_config['training']['train_transforms']
     val_transforms = {'crop': False, 'resize': False, 'flip': False}
     train_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
     val_dataset = cityScapesDataset(val_img_path, val_label_path, val_transforms)
