@@ -11,7 +11,6 @@ import torch.ao.quantization.quantize_fx as quantize_fx
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model, save_model
-from src.quantization.qat import CalibrationDataset
 from .quantization_utils import set_seed
 from pipeline.create_dataset import cityScapesDataset
 
@@ -211,13 +210,13 @@ if __name__ == "__main__":
     val_transforms = {'crop': False, 'resize': False, 'flip': False}
     train_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
     val_dataset = cityScapesDataset(val_img_path, val_label_path, val_transforms)
-    cal_dataset = CalibrationDataset(cal_img_path) # images only
+    cal_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
 
     batch_size = qat_config['training']['batch_size']
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
-    
+    cal_dataloader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
+
     # Prepare model for mixed precision QAT
     example_inputs = next(iter(cal_loader))
     example_inputs = example_inputs.to(device)
