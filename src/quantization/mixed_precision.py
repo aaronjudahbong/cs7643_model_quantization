@@ -236,7 +236,7 @@ if __name__ == "__main__":
     if qat_config.get('calibration', {})['enabled']:
         print("Starting Calibration...")
         with torch.no_grad():
-            for i, image in enumerate(cal_loader):
+            for i, (image, _) in enumerate(cal_loader):
                 image = image.to(device, non_blocking=True)
                 prepared_model(image)
                 if (i % 10 == 0 and i > 0):
