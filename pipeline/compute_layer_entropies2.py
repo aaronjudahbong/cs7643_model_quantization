@@ -100,7 +100,7 @@ if __name__ == "__main__":
     training_loader = DataLoader(training_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True) # same as fine_tuning.py
 
     # Collect activations through 128 images only
-    num_images = 128
+    num_images = 1024
     num_batches = (num_images + batch_size - 1) // batch_size  # Ceiling division
     print(f"Collecting activations from {num_images} images ({num_batches} batches)...")
     print(f"Batch size: {batch_size}")
