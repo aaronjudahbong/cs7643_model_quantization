@@ -140,3 +140,7 @@ if __name__ == "__main__":
     with open(entropies_output_file, "w") as f:
         json.dump(layer_entropies, f, indent=2)
     print(f"\nEntropies saved to {entropies_output_file}")
+
+    # Print results
+    print(f"\nTotal layers analyzed: {len(layer_entropies)}")
+    
