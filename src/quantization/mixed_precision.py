@@ -218,7 +218,7 @@ if __name__ == "__main__":
     cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
 
     # Prepare model for mixed precision QAT
-    example_inputs = next(iter(cal_loader))
+    example_inputs, _ = next(iter(cal_loader))
     example_inputs = example_inputs.to(device)
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
     prepared_model = prepared_model.to(device)
