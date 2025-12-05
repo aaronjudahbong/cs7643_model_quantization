@@ -213,9 +213,9 @@ if __name__ == "__main__":
     cal_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
 
     batch_size = qat_config['training']['batch_size']
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
+    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True, drop_last=True)
 
     # Prepare model for mixed precision QAT
     example_inputs, _ = next(iter(cal_loader))
