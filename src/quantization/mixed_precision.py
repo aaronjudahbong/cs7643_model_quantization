@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.ao.quantization as tq
 import torch.ao.quantization.quantize_fx as quantize_fx
 from torch.utils.data import DataLoader
@@ -14,13 +15,14 @@ from src.quantization.qat import CalibrationDataset
 from .quantization_utils import set_seed
 from pipeline.create_dataset import cityScapesDataset
 
-def build_qconfig_per_layer(bit_depth: int, config: dict) -> tq.QConfig:
+def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = None) -> tq.QConfig:
     """
     Build a QConfig for each layer based on specified bit depth.
     
     Args:
         bit_depth: 8, 6, or 4
         config: Base config dict
+        module: Optional module object used to check if it's Hardsigmoid
     
     Returns:
         QConfig for the layer
@@ -29,12 +31,15 @@ def build_qconfig_per_layer(bit_depth: int, config: dict) -> tq.QConfig:
     if bit_depth == 8:
         weight_quant_min, weight_quant_max = -128, 127
         act_quant_min, act_quant_max = 0, 127
+        hardsigmoid_act_scale = 1.0 / 128.0
     elif bit_depth == 6:
         weight_quant_min, weight_quant_max = -32, 31
         act_quant_min, act_quant_max = 0, 31
+        hardsigmoid_act_scale = 1.0 / 32.0
     elif bit_depth == 4:
         weight_quant_min, weight_quant_max = -8, 7
         act_quant_min, act_quant_max = 0, 7
+        hardsigmoid_act_scale = 1.0 / 8.0
     else:
         raise ValueError(f"Bit depth {bit_depth} not supported - must be 8, 6, or 4")
     
@@ -60,7 +65,18 @@ def build_qconfig_per_layer(bit_depth: int, config: dict) -> tq.QConfig:
     else:
         raise ValueError(f"Weights granularity {weights_granularity} not supported - must be 'per_channel' or 'per_tensor'")
 
-    # Build QConfig for activations
+    # If Hardsigmoid module, use FixedParamsObserver since it has a fixed min/max mapping
+    if module is not None and isinstance(module, nn.Hardsigmoid):
+        return tq.QConfig(
+            activation=tq.FixedQParamsObserver.with_args(
+                dtype=torch.quint8,
+                scale=hardsigmoid_act_scale,
+                zero_point=0,
+            ),
+            weight=weight_observer,
+        )
+
+    # Build QConfig for activations (non-Hardsigmoid layers)
     act_dtype = torch.qint8 if config["activations"]["dtype"] == "qint8" else torch.quint8
     act_scheme = torch.per_tensor_affine
     activations_observer = config['activations']['observer']
@@ -144,11 +160,12 @@ if __name__ == "__main__":
     
     # Load model
     qat_config = config["qat"]
-    print(f"Loading Model from checkpoint: {qat_config['model_checkpoint']} ...")
+    checkpoint_path = "models/finetuned_model_last_epoch.pth"
+    print(f"Loading Model from checkpoint: {checkpoint_path} ...")
     device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using Device: {device}")
     model = get_empty_model(num_classes=19)
-    model = load_model(model, qat_config["model_checkpoint"], device=device)
+    model = load_model(model, checkpoint_path, device=device)
     model = model.to(device)
     model.eval()
     
@@ -169,9 +186,14 @@ if __name__ == "__main__":
     # set global default qconfig (8-bit)
     default_qconfig = build_qconfig_per_layer(8, qat_config) 
     qconfig_mapping.set_global(default_qconfig)
+    
+    # Get model module dict to pass module objects
+    model_module_dict = {name: module for name, module in model.named_modules()}
+    
     # set per-layer qconfigs by overriding global default 
-    for layer_name, bit_depth in layer_bit_depths.items(): # TODO: hardsigmoid uses it assigned bit depth? 
-        qconfig = build_qconfig_per_layer(bit_depth, qat_config)
+    for layer_name, bit_depth in layer_bit_depths.items():
+        module = model_module_dict.get(layer_name)
+        qconfig = build_qconfig_per_layer(bit_depth, qat_config, module)
         qconfig_mapping.set_module_name(layer_name, qconfig)
     
     # Skip ASPP
@@ -204,11 +226,13 @@ if __name__ == "__main__":
     prepared_model.train()
     
     # Setup training
+    epochs = qat_config['training']['epochs']
     loss_function = nn.CrossEntropyLoss(ignore_index=255)
     optimizer = optim.Adam(prepared_model.parameters(), 
                           lr=float(qat_config['training']['learning_rate']),
                           weight_decay=float(qat_config['training']['weight_decay']))
-    
+    scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
+
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
         print("Starting Calibration...")
@@ -224,8 +248,8 @@ if __name__ == "__main__":
     
     # Train 
     print("Starting Mixed-Precision QAT...")
-    epochs = qat_config['training']['epochs']
     best_val_loss = float('inf')
+    training_history = {"train_loss": [], "val_loss": []}
     
     for epoch in range(epochs):
         prepared_model.train()
@@ -251,25 +275,19 @@ if __name__ == "__main__":
                 output = prepared_model(images)['out']
                 loss = loss_function(output, labels)
                 val_loss += loss.item()
+
+        scheduler.step()
         
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
         print(f"Epoch {epoch+1}/{epochs}: Train Loss={avg_train_loss:.6f}, Val Loss={avg_val_loss:.6f}")
         
+        # Store losses in dictionary
+        training_history["train_loss"].append(avg_train_loss)
+        training_history["val_loss"].append(avg_val_loss)
+        
         # Always save latest model
-        save_model(model, f"./models/mixed_precision_last_epoch.pth")
-
-        # Log training progress to a text file
-        with open("./models/mixed_precision_progress.txt", "a") as f:
-            f.write(
-                f"Epoch {epoch}: Training Loss={average_training_loss:.6f}, "
-                f"Validation Loss={average_validation_loss:.6f}\n"
-            )
-
-        # Save model if validation loss improved
-        if average_validation_loss < best_validation_loss:
-            best_validation_loss = average_validation_loss
-            save_model(model, f"./models/mixed_precision_best_epoch_{epoch:03d}.pth")
+        save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
     
     # Convert to quantized model
     print("Converting to quantized model...")
@@ -279,6 +297,12 @@ if __name__ == "__main__":
     output_path = "models/mixed_precision_model.pth"
     save_model(quantized_model, output_path)
     print(f"Mixed-precision model saved to {output_path}")
+    
+    # Save training history
+    history_output = "results/mixed_precision_training_history.json"
+    with open(history_output, "w") as f:
+        json.dump(training_history, f, indent=2)
+    print(f"Training history saved to {history_output}")
     
     # Save bit depth assignment
     bit_depth_output = "results/mixed_precision_layer_bit_depths.json"
