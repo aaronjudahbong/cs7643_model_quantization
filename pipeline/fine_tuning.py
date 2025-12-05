@@ -3,7 +3,7 @@ from pipeline.create_dataset import cityScapesDataset
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, PolynomialLR
 from torch.utils.data import DataLoader
 from src.models.deeplabv3_mnv3 import get_empty_model, save_model, load_model
 from tqdm import tqdm
@@ -42,7 +42,8 @@ if __name__ == "__main__":
     optimizer = optim.Adam([param for param in model.parameters() if param.requires_grad], lr=float(config['training']['learning_rate']),
                                                 weight_decay=float(config['training']['weight_decay']))
     
-    scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
+    # scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
+    scheduler = PolynomialLR(optimizer, total_iters=epochs, power=0.9)
 
     best_validation_loss = float('inf')
     print("Starting Fine-Tuning ...")

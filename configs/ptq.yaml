@@ -49,7 +49,7 @@ qat:
 
 fp:
   training:
-    epochs: 20
+    epochs: 30
     batch_size: 4
     learning_rate: 3e-4
     weight_decay: 3e-5
