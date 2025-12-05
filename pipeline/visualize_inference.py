@@ -7,7 +7,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 import numpy as np
 
-CHECKPOINT = "./models/finetuned_model_best_epoch_013.pth"
+CHECKPOINT = "./models/finetuned_model_last_epoch.pth"
 
 if __name__ == "__main__":
     print("----- Visualizing Inference Results -----")
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         color_mask[predicted_mask == train_id] = color  
 
     # Display original image and predicted mask
-    plt.figure(figsize=(12, 6))
+    plt.figure(constrained_layout=True)
     plt.subplot(1, 3, 1)
     plt.title("Original Image")
     plt.imshow(image)
@@ -62,5 +62,5 @@ if __name__ == "__main__":
     plt.title("Predicted Mask")
     plt.imshow(color_mask)
     plt.axis("off")
-
-    plt.show()
+    plt.savefig("./results/Finetuned_Visualization.png")
+    plt.close()
