@@ -133,13 +133,3 @@ if __name__ == "__main__":
     with open(entropies_output_file, "w") as f:
         json.dump(layer_entropies, f, indent=2)
     print(f"\nEntropies saved to {entropies_output_file}")
-
-    # Print results 
-    print(f"\n{'='*50}")
-    print("PER-LAYER ENTROPIES")
-    print(f"{'='*50}")
-    sorted_layers = sorted(layer_entropies.items(), key=lambda x: x[1], reverse=True)
-    for layer, entropy in sorted_layers:
-        print(f"{layer:50s}  entropy = {entropy:.4f} bits")
-    print(f"\nTotal layers analyzed: {len(layer_entropies)}")
-    
