@@ -10,7 +10,7 @@ from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from pipeline.create_dataset import cityScapesDataset
 
 class ActivationHistogram:
-    def __init__(self, bins=256):
+    def __init__(self, bins=1024):
         self.bins = bins
         self.hist = None # np.ndarray
         self.min_val = float("inf")
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Read config to get settings for data loading
     with open("configs/ptq.yaml", "r") as f:
         config = yaml.safe_load(f)
-    batch_size = config["fp"]['training']['batch_size']
+    batch_size = 1024 # hard code 
     transforms = config["fp"]['training']['val_transforms'] # no transformations
 
     # Load data 
