@@ -215,7 +215,7 @@ if __name__ == "__main__":
     batch_size = qat_config['training']['batch_size']
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    cal_dataloader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
+    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
 
     # Prepare model for mixed precision QAT
     example_inputs = next(iter(cal_loader))
