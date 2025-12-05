@@ -311,9 +311,6 @@ if __name__ == "__main__":
             all_predictions.append(preds.cpu())
             all_targets.append(labels)
             
-            if (i + 1) % 10 == 0:
-                print(f"  Completed {i + 1}/{len(val_loader)}")
-    
     # Concatenate all predictions and targets
     all_predictions = torch.cat(all_predictions, dim=0)
     all_targets = torch.cat(all_targets, dim=0)
