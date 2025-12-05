@@ -80,7 +80,7 @@ def calculate_model_size_mixed_precision(model: torch.nn.Module,
     quantize_fx.convert_fx.
     
     Args:
-        model: PyTorch model
+        model: PyTorch model, NOT converted to quantized model!
         quantization_bits: If provided, calculate theoretical size assuming parameters
                           are stored at this bit-width (e.g., 4 for int4). Used for uniform
                           quantization. If None, calculates actual storage size.
