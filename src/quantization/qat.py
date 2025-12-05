@@ -181,9 +181,9 @@ if __name__ == "__main__":
       json.dump(results, f, indent=2)
 
     fig, ax = plot_loss(train_losses, val_losses)
-    plot_path = os.path.join(results_dir, f"qat_loss.png")
+    plot_path = os.path.join(results_dir, "qat_loss.png")
     fig.savefig(plot_path)
 
     fig, ax = plot_miou(val_mious)
-    plot_path = os.path.join(results_dir, f"miou.png")
+    plot_path = os.path.join(results_dir, "miou.png")
     fig.savefig(plot_path)
