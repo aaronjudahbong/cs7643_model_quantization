@@ -36,15 +36,12 @@ def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = No
     if bit_depth == 8:
         weight_quant_min, weight_quant_max = -128, 127
         act_quant_min, act_quant_max = 0, 127
-        hardsigmoid_act_scale = 1.0 / 128.0
     elif bit_depth == 6:
         weight_quant_min, weight_quant_max = -32, 31
         act_quant_min, act_quant_max = 0, 31
-        hardsigmoid_act_scale = 1.0 / 32.0
     elif bit_depth == 4:
         weight_quant_min, weight_quant_max = -8, 7
         act_quant_min, act_quant_max = 0, 7
-        hardsigmoid_act_scale = 1.0 / 8.0
     else:
         raise ValueError(f"Bit depth {bit_depth} not supported - must be 8, 6, or 4")
     
@@ -75,7 +72,7 @@ def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = No
         return tq.QConfig(
             activation=tq.FixedQParamsObserver.with_args(
                 dtype=torch.quint8,
-                scale=hardsigmoid_act_scale,
+                scale=1.0 / 256.0,
                 zero_point=0,
             ),
             weight=weight_observer,
