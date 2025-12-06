@@ -1,5 +1,5 @@
 ptq:
-  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
+  model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
   mode: "int8" # "default", "int8", "int6" or "int4"
 
   weights: 
@@ -14,7 +14,7 @@ ptq:
     observer: "minmax"
 
   calibration:
-    steps: 128
+    steps: [1, 2, 4, 8, 16, 32, 64, 100] # Must be a list.
 
   skip_aspp: True
 
