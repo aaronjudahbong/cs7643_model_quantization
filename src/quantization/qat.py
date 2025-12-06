@@ -140,6 +140,8 @@ def run_qat(idx, config, results_dir):
                 loss = loss_function(out, label)
                 validation_loss += loss.item()
                 val_miou += calculate_miou(pred, label)[0]
+        
+        scheduler.step()
 
         average_training_loss = training_loss / len(train_dataloader)
         average_validation_loss = validation_loss / len(val_dataloader)
