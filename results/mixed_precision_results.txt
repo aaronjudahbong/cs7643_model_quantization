@@ -368,3 +368,77 @@ skip_aspp: true
 
 ============================================================
 
+Model Size: 10.57 MB
+
+mIoU: 0.5968
+
+Per-Class IoU:
+  Class 0: 0.9568
+  Class 1: 0.7133
+  Class 2: 0.8610
+  Class 3: 0.3731
+  Class 4: 0.4514
+  Class 5: 0.2772
+  Class 6: 0.4511
+  Class 7: 0.5451
+  Class 8: 0.8722
+  Class 9: 0.5416
+  Class 10: 0.8790
+  Class 11: 0.6234
+  Class 12: 0.4218
+  Class 13: 0.8620
+  Class 14: 0.5630
+  Class 15: 0.6614
+  Class 16: 0.3184
+  Class 17: 0.3656
+  Class 18: 0.6012
+
+Training Losses:
+  Epoch 1: 0.287950
+  Epoch 2: 0.268244
+  Epoch 3: 0.257028
+  Epoch 4: 0.224480
+  Epoch 5: 0.200724
+
+Validation Losses:
+  Epoch 1: 0.270965
+  Epoch 2: 0.325308
+  Epoch 3: 0.295167
+  Epoch 4: 0.278435
+  Epoch 5: 0.236744
+
+Bit Depth Distribution:
+  8-bit layers: 47
+  6-bit layers: 47
+  4-bit layers: 93
+
+Configuration Parameters:
+model_checkpoint: models/baseline_init_model.pth
+mode: int8
+weights:
+  dtype: qint8
+  granularity: per_channel
+activations:
+  dtype: quint8
+  granularity: per_tensor
+  observer: histogram
+calibration:
+  enabled: true
+  steps: 128
+training:
+  epochs: 5
+  batch_size: 4
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  train_transforms:
+    crop: true
+    resize: true
+    flip: true
+  val_transforms:
+    crop: false
+    resize: false
+    flip: false
+skip_aspp: true
+
+============================================================
+
