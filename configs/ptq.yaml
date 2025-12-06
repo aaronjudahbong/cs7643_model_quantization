@@ -19,7 +19,7 @@ ptq:
   skip_aspp: True
 
 qat:
-  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
+  model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
   mode: "int8" # "default", "int8", "int6" or "int4"
 
   weights: 
@@ -36,7 +36,7 @@ qat:
     steps: 128
 
   training:
-    epochs: 10
+    epochs: 15
     batch_size: 2
     learning_rate: 1e-4
     weight_decay: 1e-5
