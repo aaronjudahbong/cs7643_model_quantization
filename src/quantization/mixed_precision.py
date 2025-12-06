@@ -317,7 +317,7 @@ if __name__ == "__main__":
     
     # Calculate mIoU
     print(f"\nCalculating mIoU...")
-    miou, iou = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
 
     # Save model
@@ -336,10 +336,40 @@ if __name__ == "__main__":
     with open(bit_depth_output, "w") as f:
         json.dump(layer_bit_depths, f, indent=2)
     print(f"Bit depth assignments saved to {bit_depth_output}")
-
+    
+    # Save evaluation results to text file
+    results_output = "results/mixed_precision_results.txt"
+    with open(results_output, "a") as f:
+        f.write(f"Model Size: {model_size_mb:.2f} MB\n\n")
+        
+        f.write(f"mIoU: {miou:.4f}\n\n")
+        
+        f.write("Per-Class IoU:\n")
+        for class_idx, iou in enumerate(per_class_ious):
+            f.write(f"  Class {class_idx}: {iou:.4f}\n")
+        f.write("\n")
+        
+        f.write("Training Losses:\n")
+        for epoch, loss in enumerate(training_history["train_loss"], 1):
+            f.write(f"  Epoch {epoch}: {loss:.6f}\n")
+        f.write("\n")
+        
+        f.write("Validation Losses:\n")
+        for epoch, loss in enumerate(training_history["val_loss"], 1):
+            f.write(f"  Epoch {epoch}: {loss:.6f}\n")
+        f.write("\n")
+        
+        f.write("Bit Depth Distribution:\n")
+        f.write(f"  8-bit layers: {bit_counts[8]}\n")
+        f.write(f"  6-bit layers: {bit_counts[6]}\n")
+        f.write(f"  4-bit layers: {bit_counts[4]}\n")
+        f.write("\n")
+        
+        f.write("Configuration Parameters:\n")
+        f.write(yaml.dump(qat_config, default_flow_style=False, sort_keys=False))
+        f.write("\n" + "="*60 + "\n\n")
 
     # Visualization
-    print("----- Visualizing Inference Results -----")
     # Load Image
     sample_folder = "frankfurt"
     sample_id = "000000_001751"
