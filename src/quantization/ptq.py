@@ -55,6 +55,8 @@ if __name__ == "__main__":
     print("Loading Configuration ...")
     with open("configs/ptq.yaml", "r") as f:
         config = yaml.safe_load(f)["ptq"]
+    
+    print(f"Quantizing to {config['mode']}")
 
     # Calibration settings to sweep
     calib_steps_list = config["calibration"]["steps"]

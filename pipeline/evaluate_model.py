@@ -36,10 +36,16 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
     print(f"Loading model from: {model_path}")
     
     # Load model
-    model = get_empty_model(num_classes=19) # get model architecture
-    model = load_model(model, model_path, device=device) # load model weights 
-    model = model.to(device)
-    model.eval()
+    if model_path.endswith(".pt") or model_path.endswith(".jit"):
+        print("Loading TorchScript JIT model...")
+        model = torch.jit.load(model_path, map_location=device)
+        model.eval()
+    else:
+        print("Loading standard PyTorch checkpoint (.pth)...")
+        model = get_empty_model(num_classes=19)  # architecture
+        model = load_model(model, model_path, device=device)  # state_dict
+        model = model.to(device)
+        model.eval()
     
     # Calculate model size
     model_size_mb = calculate_model_size(model, quantization_bits=quantization_bits)
@@ -112,7 +118,7 @@ def evaluate_model(model_path: str, val_image_folder: str, val_label_folder: str
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate a model checkpoint')
     parser.add_argument('--model', type=str, required=True,
-                    help='Path to model checkpoint (.pth file)')
+                    help='Path to model checkpoint (.pth or .jit file)')
     parser.add_argument('--val_images', type=str, 
                     default=validation_image_folder,
                     help='Path to validation images folder')
