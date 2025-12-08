@@ -265,7 +265,7 @@ if __name__ == "__main__":
                     print(f"  Completed {qat_config['calibration']['steps']} calibration steps.")
                     break
 
-    for name, module in converted.named_modules():
+    for name, module in prepared_model.named_modules():
         print(name)
         w = module.weight()
         print(w.dtype)
