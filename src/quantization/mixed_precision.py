@@ -251,8 +251,6 @@ if __name__ == "__main__":
     #         print(f"  quant_min:   {fq.quant_min}")
     #         print(f"  quant_max:   {fq.quant_max}")
     
-    print(prepared_model.graph)
-
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
@@ -267,32 +265,61 @@ if __name__ == "__main__":
                     print(f"  Completed {qat_config['calibration']['steps']} calibration steps.")
                     break
     
-    import torch.ao.quantization.observer as obs
+import torch.ao.quantization.observer as obs
+import torch.ao.quantization.fake_quantize as fq
 
-    for name, module in prepared_model.named_modules():
+for module_name, module in prepared_model.named_modules():
 
-        # Detect only activation observers
-        if name.startswith("activation_post_process") and isinstance(module, obs.ObserverBase):
+    # detect activation observers
+    if isinstance(module, obs.ObserverBase) and module_name.startswith("activation_post_process"):
+        print(f"\n[Activation Observer] {module_name}")
+        print(f"  quant_min: {module.quant_min}")
+        print(f"  quant_max: {module.quant_max}")
 
-            print(f"\nActivation Observer: {name}")
-            print(f"  quant_min: {module.quant_min}")
-            print(f"  quant_max: {module.quant_max}")
+        # Observed ranges
+        if hasattr(module, "min_val"):
+            print(f"  observed_min: {module.min_val}")
+            print(f"  observed_max: {module.max_val}")
+        elif hasattr(module, "min_vals"):  # histogram/per-channel style
+            print(f"  observed_min_vals: {module.min_vals}")
+            print(f"  observed_max_vals: {module.max_vals}")
 
-            # Min/max stats (may be None before first calibration/training step)
-            if hasattr(module, "min_val"):
-                print(f"  observed_min: {module.min_val}")
-                print(f"  observed_max: {module.max_val}")
-            elif hasattr(module, "min_vals"):
-                print(f"  observed_min_vals: {module.min_vals}")
-                print(f"  observed_max_vals: {module.max_vals}")
+        # Derived qparams
+        try:
+            scale, zp = module.calculate_qparams()
+            print(f"  scale: {scale}")
+            print(f"  zero_point: {zp}")
+        except:
+            print("  scale/zp not available yet (requires at least one forward pass)")
 
-            # Scale/zp after stats are collected
-            try:
-                scale, zp = module.calculate_qparams()
-                print(f"  scale: {scale}")
-                print(f"  zero_point: {zp}")
-            except:
-                print("  qparams not yet available (run one forward pass)")
+
+    # detect weight observers
+    if hasattr(module, "weight_fake_quant"):
+        weight_ob = module.weight_fake_quant
+
+        print(f"\n[Weight Observer] {module_name}.weight_fake_quant")
+
+        # quantization range
+        if hasattr(weight_ob, "quant_min"):
+            print(f"  quant_min: {weight_ob.quant_min}")
+            print(f"  quant_max: {weight_ob.quant_max}")
+
+        # record weight stats if available
+        if hasattr(weight_ob, "min_val"):
+            print(f"  observed_min: {weight_ob.min_val}")
+            print(f"  observed_max: {weight_ob.max_val}")
+        elif hasattr(weight_ob, "min_vals"):    # per-channel observer
+            print(f"  observed_min_vals: {weight_ob.min_vals}")
+            print(f"  observed_max_vals: {weight_ob.max_vals}")
+
+        # qparams (scale, zero_point)
+        try:
+            scale, zp = weight_ob.calculate_qparams()
+            print(f"  weight_scale: {scale}")
+            print(f"  weight_zero_point: {zp}")
+        except:
+            print("  Weight qparams not available yet")
+
 
 
     # Train 
