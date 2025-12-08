@@ -420,34 +420,27 @@ if __name__ == "__main__":
     mp_color_mask = mask_to_color(mp_predicted_mask)
 
     # Display comparison
-    plt.figure(figsize=(20, 4), constrained_layout=True)
+    plt.figure(figsize=(16, 4), constrained_layout=True)
     
-    plt.subplot(1, 5, 1)
+    plt.subplot(1, 4, 1)
     plt.title("Original Image", fontsize=12)
     plt.imshow(image)
     plt.axis("off")
 
-    plt.subplot(1, 5, 2)
+    plt.subplot(1, 4, 2)
     plt.title("Ground Truth", fontsize=12)
     ground_truth = Image.open(ground_truth_path)
     plt.imshow(ground_truth)
     plt.axis("off")
 
-    plt.subplot(1, 5, 3)
+    plt.subplot(1, 4, 3)
     plt.title("FP32 Model Prediction", fontsize=12)
     plt.imshow(fp32_color_mask)
     plt.axis("off")
 
-    plt.subplot(1, 5, 4)
+    plt.subplot(1, 4, 4)
     plt.title("Mixed-Precision Model Prediction", fontsize=12)
     plt.imshow(mp_color_mask)
-    plt.axis("off")
-
-    plt.subplot(1, 5, 5)
-    plt.title("Difference (FP32 vs MP)", fontsize=12)
-    # Show pixels where predictions differ
-    difference_mask = (fp32_predicted_mask != mp_predicted_mask).astype(np.uint8) * 255
-    plt.imshow(difference_mask, cmap='hot')
     plt.axis("off")
     
     plt.savefig("./results/mp_vs_fp32_visualization.png", dpi=150, bbox_inches='tight')
