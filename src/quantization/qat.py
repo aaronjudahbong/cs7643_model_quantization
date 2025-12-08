@@ -183,6 +183,31 @@ def run_qat(idx, config, results_dir):
     # must move model to CPU to convert, else it errors!
     prepared_model = prepared_model.cpu()
     quantized_model = quantize_fx.convert_fx(prepared_model.eval())
+    quantized_model = quantized_model.to(device).eval()
+    for i in range(2):
+        # Run inference on full validation set and calculate mIoU
+        print(f"\nRunning inference on validation set AFTER...")
+        all_predictions = []
+        all_targets = []
+        
+        with torch.no_grad():
+            for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
+                image = image.to(device, non_blocking=True)
+                
+                out = quantized_model(image)['out']
+                preds = out.argmax(dim=1)
+                
+                all_predictions.append(preds.cpu())
+                all_targets.append(labels)
+                
+        # Concatenate all predictions and targets
+        all_predictions = torch.cat(all_predictions, dim=0)
+        all_targets = torch.cat(all_targets, dim=0)
+        
+        # Calculate mIoU
+        print(f"\nCalculating mIoU...")
+        miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+        print(f"mIoU: {miou:.4f}")
 
     print("Saving QAT Model ...")
     model_path = os.path.join(results_dir, f"qat_quantized_model_{idx}.pth")
