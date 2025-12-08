@@ -225,7 +225,7 @@ if __name__ == "__main__":
     example_inputs = example_inputs.to(device)
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
     prepared_model = prepared_model.to(device)
-    prepared_model.eval()
+    prepared_model.eval() # eval for calibration
     
     # Setup training
     epochs = qat_config['training']['epochs']
@@ -234,23 +234,6 @@ if __name__ == "__main__":
                           lr=float(qat_config['training']['learning_rate']),
                           weight_decay=float(qat_config['training']['weight_decay']))
     scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
-
-    # # TODO remove 
-    # print("layer bit depths:")
-    # print(layer_bit_depths)
-    # for name, param in prepared_model.named_modules():
-    #     print(f"{name}")
-    # for name, param in prepared_model.named_parameters():
-    #     print(f"{name}, min: {param.min()}, max: {param.max()}")
-    # for module_name, module in prepared_model.named_modules(): # seem right 
-    #     if hasattr(module, "weight_fake_quant"):
-
-    #         fq = module.weight_fake_quant
-
-    #         print(f"\nModule: {module_name}")
-    #         print(f"  quant_min:   {fq.quant_min}")
-    #         print(f"  quant_max:   {fq.quant_max}")
-    
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
@@ -264,70 +247,6 @@ if __name__ == "__main__":
                 if (i >= qat_config['calibration']['steps'] - 1):
                     print(f"  Completed {qat_config['calibration']['steps']} calibration steps.")
                     break
-
-    for name, module in prepared_model.named_modules():
-        print(name)
-        w = module.weight()
-        print(w.dtype)
-        print(w.int_repr())
-
-    
-    # import torch.ao.quantization.observer as obs
-    # import torch.ao.quantization.fake_quantize as fq
-
-    # for module_name, module in prepared_model.named_modules():
-
-    #     # detect activation observers
-    #     if isinstance(module, obs.ObserverBase) and module_name.startswith("activation_post_process"):
-    #         print(f"\n[Activation Observer] {module_name}")
-    #         print(f"  quant_min: {module.quant_min}")
-    #         print(f"  quant_max: {module.quant_max}")
-
-    #         # Observed ranges
-    #         if hasattr(module, "min_val"):
-    #             print(f"  observed_min: {module.min_val}")
-    #             print(f"  observed_max: {module.max_val}")
-    #         elif hasattr(module, "min_vals"):  # histogram/per-channel style
-    #             print(f"  observed_min_vals: {module.min_vals}")
-    #             print(f"  observed_max_vals: {module.max_vals}")
-
-    #         # Derived qparams
-    #         try:
-    #             scale, zp = module.calculate_qparams()
-    #             print(f"  scale: {scale}")
-    #             print(f"  zero_point: {zp}")
-    #         except:
-    #             print("  scale/zp not available yet (requires at least one forward pass)")
-
-
-    #     # detect weight observers
-    #     if hasattr(module, "weight_fake_quant"):
-    #         weight_ob = module.weight_fake_quant
-
-    #         print(f"\n[Weight Observer] {module_name}.weight_fake_quant")
-
-    #         # quantization range
-    #         if hasattr(weight_ob, "quant_min"):
-    #             print(f"  quant_min: {weight_ob.quant_min}")
-    #             print(f"  quant_max: {weight_ob.quant_max}")
-
-    #         # record weight stats if available
-    #         if hasattr(weight_ob, "min_val"):
-    #             print(f"  observed_min: {weight_ob.min_val}")
-    #             print(f"  observed_max: {weight_ob.max_val}")
-    #         elif hasattr(weight_ob, "min_vals"):    # per-channel observer
-    #             print(f"  observed_min_vals: {weight_ob.min_vals}")
-    #             print(f"  observed_max_vals: {weight_ob.max_vals}")
-
-    #         # qparams (scale, zero_point)
-    #         try:
-    #             scale, zp = weight_ob.calculate_qparams()
-    #             print(f"  weight_scale: {scale}")
-    #             print(f"  weight_zero_point: {zp}")
-    #         except:
-    #             print("  Weight qparams not available yet")
-
-
 
     # Train 
     print("Starting Mixed-Precision QAT...")
