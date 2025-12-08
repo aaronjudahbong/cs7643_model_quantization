@@ -298,18 +298,33 @@ if __name__ == "__main__":
     print()
     
     # Collect leaf modules with assigned bit depths
+    # First, collect all weight parameters with their module names
+    param_to_module = {}
+    for param_name, param in prepared_model.named_parameters():
+        if param.requires_grad and 'weight' in param_name:
+            module_name = '.'.join(param_name.split('.')[:-1])  # Remove .weight suffix
+            param_to_module[param_name] = (module_name, param)
+    
+    # Now find leaf modules and match with parameters
     leaf_layers = []
     for name, module in prepared_model.named_modules():
         # Check if it's a leaf module (no children)
         if len(list(module.children())) == 0:
             # Check if it has an assigned bit depth
             if name in layer_bit_depths:
-                # Get weight parameter if it exists
+                # Find weight parameter for this module
                 weight_param = None
-                for param_name, param in module.named_parameters(recurse=False):
-                    if 'weight' in param_name:
+                for param_name, (mod_name, param) in param_to_module.items():
+                    if mod_name == name:
                         weight_param = param
                         break
+                
+                # If not found by exact match, try finding by module name in parameter name
+                if weight_param is None:
+                    for param_name, (mod_name, param) in param_to_module.items():
+                        if name in mod_name or mod_name.endswith(name.split('.')[-1]):
+                            weight_param = param
+                            break
                 
                 if weight_param is not None:
                     leaf_layers.append((name, layer_bit_depths[name], weight_param))
@@ -318,15 +333,18 @@ if __name__ == "__main__":
     num_to_sample = min(20, len(leaf_layers))
     sampled_layers = leaf_layers[:num_to_sample]
     
-    # Print header
-    print(f"{'Layer Name':<50} {'Bit Depth':<12} {'Weight Min':<15} {'Weight Max':<15}")
-    print("-" * 92)
-    
-    # Print each layer
-    for layer_name, bit_depth, weight_param in sampled_layers:
-        weight_min = weight_param.data.min().item()
-        weight_max = weight_param.data.max().item()
-        print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}")
+    if len(sampled_layers) > 0:
+        # Print header
+        print(f"{'Layer Name':<50} {'Bit Depth':<12} {'Weight Min':<15} {'Weight Max':<15}")
+        print("-" * 92)
+        
+        # Print each layer
+        for layer_name, bit_depth, weight_param in sampled_layers:
+            weight_min = weight_param.data.min().item()
+            weight_max = weight_param.data.max().item()
+            print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}")
+    else:
+        print("No leaf layers with assigned bit depths and weight parameters found.")
     
     print("="*80)
     print()
@@ -378,6 +396,7 @@ if __name__ == "__main__":
                             zero_points = zero_point if torch.is_tensor(zero_point) else torch.tensor([zero_point])
                             
                             all_valid = True
+                            problematic_channels = []
                             for ch_idx in range(len(scales)):
                                 ch_scale = scales[ch_idx].item()
                                 ch_zp = zero_points[ch_idx].item()
@@ -387,12 +406,21 @@ if __name__ == "__main__":
                                 quantized = torch.round(ch_weights / ch_scale + ch_zp)
                                 if quantized.min() < expected_min or quantized.max() > expected_max:
                                     all_valid = False
-                                    break
+                                    quant_min = quantized.min().item()
+                                    quant_max = quantized.max().item()
+                                    problematic_channels.append((ch_idx, ch_scale, ch_zp, quant_min, quant_max))
                             
                             if all_valid:
                                 layers_with_valid_scales.append((name, assigned_bit_depth))
                             else:
-                                layers_with_fp32_scales.append((name, assigned_bit_depth, "per-channel scale issue"))
+                                # Format scale info
+                                scale_parts = []
+                                for ch_idx, ch_scale, ch_zp, quant_min, quant_max in problematic_channels[:5]:
+                                    scale_parts.append(f"ch{ch_idx}: scale={ch_scale:.6f}, zp={ch_zp}, quant_range=[{quant_min}, {quant_max}]")
+                                scale_info = f"per-channel scales: {', '.join(scale_parts)}"
+                                if len(problematic_channels) > 5:
+                                    scale_info += f" ... and {len(problematic_channels) - 5} more channels"
+                                layers_with_fp32_scales.append((name, assigned_bit_depth, scale_info))
                         else:
                             # Per-tensor: check single scale
                             scale_val = scale.item() if torch.is_tensor(scale) else scale
@@ -406,10 +434,8 @@ if __name__ == "__main__":
                             else:
                                 quant_min = quantized.min().item()
                                 quant_max = quantized.max().item()
-                                layers_with_fp32_scales.append((
-                                    name, assigned_bit_depth, 
-                                    f"quantized range [{quant_min}, {quant_max}] outside expected [{expected_min}, {expected_max}]"
-                                ))
+                                scale_info = f"scale={scale_val:.6f}, zp={zp_val}, quantized_range=[{quant_min}, {quant_max}], expected=[{expected_min}, {expected_max}]"
+                                layers_with_fp32_scales.append((name, assigned_bit_depth, scale_info))
     
     # Report results
     print(f"Total weight layers checked: {len(layers_with_valid_scales) + len(layers_with_fp32_scales)}")
