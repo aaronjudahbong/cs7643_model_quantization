@@ -11,9 +11,14 @@ import torch.ao.quantization.quantize_fx as quantize_fx
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model, save_model
-from src.quantization.qat import CalibrationDataset
 from .quantization_utils import set_seed
 from pipeline.create_dataset import cityScapesDataset
+from pipeline.metrics import calculate_miou, calculate_model_size_mixed_precision
+import matplotlib.pyplot as plt
+from src.scripts.mappings import map_train_id_to_color
+from PIL import Image
+import torchvision.transforms as T
+import torchvision.transforms.functional as F
 
 def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = None) -> tq.QConfig:
     """
@@ -31,15 +36,12 @@ def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = No
     if bit_depth == 8:
         weight_quant_min, weight_quant_max = -128, 127
         act_quant_min, act_quant_max = 0, 127
-        hardsigmoid_act_scale = 1.0 / 128.0
     elif bit_depth == 6:
         weight_quant_min, weight_quant_max = -32, 31
         act_quant_min, act_quant_max = 0, 31
-        hardsigmoid_act_scale = 1.0 / 32.0
     elif bit_depth == 4:
         weight_quant_min, weight_quant_max = -8, 7
         act_quant_min, act_quant_max = 0, 7
-        hardsigmoid_act_scale = 1.0 / 8.0
     else:
         raise ValueError(f"Bit depth {bit_depth} not supported - must be 8, 6, or 4")
     
@@ -70,7 +72,7 @@ def build_qconfig_per_layer(bit_depth: int, config: dict, module: nn.Module = No
         return tq.QConfig(
             activation=tq.FixedQParamsObserver.with_args(
                 dtype=torch.quint8,
-                scale=hardsigmoid_act_scale,
+                scale=1.0 / 256.0,
                 zero_point=0,
             ),
             weight=weight_observer,
@@ -207,23 +209,23 @@ if __name__ == "__main__":
     val_img_path = "data/leftImg8bit_trainvaltest/leftImg8bit/val"
     val_label_path = "data/gtFine_trainId/gtFine/val"
     
-    train_transforms = qat_config['training']['transforms']
+    train_transforms = qat_config['training']['train_transforms']
     val_transforms = {'crop': False, 'resize': False, 'flip': False}
     train_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
     val_dataset = cityScapesDataset(val_img_path, val_label_path, val_transforms)
-    cal_dataset = CalibrationDataset(cal_img_path) # images only
+    cal_dataset = cityScapesDataset(train_img_path, train_label_path, train_transforms)
 
     batch_size = qat_config['training']['batch_size']
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
-    
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
+    cal_loader = DataLoader(cal_dataset, batch_size=2, shuffle=True, drop_last=True)
+
     # Prepare model for mixed precision QAT
-    example_inputs = next(iter(cal_loader))
+    example_inputs, _ = next(iter(cal_loader))
     example_inputs = example_inputs.to(device)
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
     prepared_model = prepared_model.to(device)
-    prepared_model.train()
+    prepared_model.eval()
     
     # Setup training
     epochs = qat_config['training']['epochs']
@@ -237,7 +239,7 @@ if __name__ == "__main__":
     if qat_config.get('calibration', {})['enabled']:
         print("Starting Calibration...")
         with torch.no_grad():
-            for i, image in enumerate(cal_loader):
+            for i, (image, _) in enumerate(cal_loader):
                 image = image.to(device, non_blocking=True)
                 prepared_model(image)
                 if (i % 10 == 0 and i > 0):
@@ -289,13 +291,38 @@ if __name__ == "__main__":
         # Always save latest model
         save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
     
-    # Convert to quantized model
-    print("Converting to quantized model...")
-    quantized_model = quantize_fx.convert_fx(prepared_model.eval())
+    # calculate model size 
+    print(f"Calculating model size...")
+    model_size_mb = calculate_model_size_mixed_precision(prepared_model, layer_bit_depths=layer_bit_depths)
+    print(f"\nModel Size: {model_size_mb:.2f} MB")
     
+    # Run inference on full validation set and calculate mIoU
+    print(f"\nRunning inference on validation set...")
+    all_predictions = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for i, (image, labels) in enumerate(tqdm(val_loader, desc="Validation inference")):
+            image = image.to(device, non_blocking=True)
+            
+            out = prepared_model(image)['out']
+            preds = out.argmax(dim=1)
+            
+            all_predictions.append(preds.cpu())
+            all_targets.append(labels)
+            
+    # Concatenate all predictions and targets
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    
+    # Calculate mIoU
+    print(f"\nCalculating mIoU...")
+    miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    print(f"mIoU: {miou:.4f}")
+
     # Save model
     output_path = "models/mixed_precision_model.pth"
-    save_model(quantized_model, output_path)
+    save_model(prepared_model, output_path)
     print(f"Mixed-precision model saved to {output_path}")
     
     # Save training history
@@ -309,3 +336,109 @@ if __name__ == "__main__":
     with open(bit_depth_output, "w") as f:
         json.dump(layer_bit_depths, f, indent=2)
     print(f"Bit depth assignments saved to {bit_depth_output}")
+    
+    # Save evaluation results to text file
+    results_output = "results/mixed_precision_results.txt"
+    with open(results_output, "a") as f:
+        f.write(f"Model Size: {model_size_mb:.2f} MB\n\n")
+        
+        f.write(f"mIoU: {miou:.4f}\n\n")
+        
+        f.write("Per-Class IoU:\n")
+        for class_idx, iou in enumerate(per_class_ious):
+            f.write(f"  Class {class_idx}: {iou:.4f}\n")
+        f.write("\n")
+        
+        f.write("Training Losses:\n")
+        for epoch, loss in enumerate(training_history["train_loss"], 1):
+            f.write(f"  Epoch {epoch}: {loss:.6f}\n")
+        f.write("\n")
+        
+        f.write("Validation Losses:\n")
+        for epoch, loss in enumerate(training_history["val_loss"], 1):
+            f.write(f"  Epoch {epoch}: {loss:.6f}\n")
+        f.write("\n")
+        
+        f.write("Bit Depth Distribution:\n")
+        f.write(f"  8-bit layers: {bit_counts[8]}\n")
+        f.write(f"  6-bit layers: {bit_counts[6]}\n")
+        f.write(f"  4-bit layers: {bit_counts[4]}\n")
+        f.write("\n")
+        
+        f.write("Configuration Parameters:\n")
+        f.write(yaml.dump(qat_config, default_flow_style=False, sort_keys=False))
+        f.write("\n" + "="*60 + "\n\n")
+
+    # Visualization
+    # Load Image
+    sample_folder = "frankfurt"
+    sample_id = "000001_014565"
+    image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
+    ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
+    image = Image.open(image_path).convert("RGB")
+    
+    # Normalize image
+    normalize_image = T.Normalize(
+        mean = [0.485, 0.456, 0.406],
+        std = [0.229, 0.224, 0.225]
+    )
+    image_tensor = F.to_tensor(image)
+    image_tensor = normalize_image(image_tensor)
+    image_tensor = image_tensor.unsqueeze(0).to(device)
+
+    # Load FP32 model for comparison
+    print("Loading FP32 model for comparison...")
+    fp32_model = get_empty_model(num_classes=19)
+    fp32_checkpoint = "models/finetuned_model_last_epoch.pth"
+    fp32_model = load_model(fp32_model, fp32_checkpoint, device=device)
+    fp32_model = fp32_model.to(device)
+    fp32_model.eval()
+
+    # Run inference on both models
+    with torch.no_grad():
+        # FP32 model prediction
+        fp32_output = fp32_model(image_tensor)['out']
+        fp32_predicted_mask = torch.argmax(fp32_output.squeeze(), dim=0).detach().cpu().numpy()
+        
+        # Mixed-precision model prediction
+        prepared_model.eval()  # Set to eval for inference
+        mp_output = prepared_model(image_tensor)['out']
+        mp_predicted_mask = torch.argmax(mp_output.squeeze(), dim=0).detach().cpu().numpy()
+
+    # Map train IDs to colors for visualization
+    def mask_to_color(mask):
+        height, width = mask.shape
+        color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+        for train_id, color in map_train_id_to_color.items():
+            color_mask[mask == train_id] = color
+        return color_mask
+
+    fp32_color_mask = mask_to_color(fp32_predicted_mask)
+    mp_color_mask = mask_to_color(mp_predicted_mask)
+
+    # Display comparison
+    plt.figure(figsize=(16, 4), constrained_layout=True)
+    
+    plt.subplot(1, 4, 1)
+    plt.title("Original Image", fontsize=12)
+    plt.imshow(image)
+    plt.axis("off")
+
+    plt.subplot(1, 4, 2)
+    plt.title("Ground Truth", fontsize=12)
+    ground_truth = Image.open(ground_truth_path)
+    plt.imshow(ground_truth)
+    plt.axis("off")
+
+    plt.subplot(1, 4, 3)
+    plt.title("FP32 Model Prediction", fontsize=12)
+    plt.imshow(fp32_color_mask)
+    plt.axis("off")
+
+    plt.subplot(1, 4, 4)
+    plt.title("Mixed-Precision Model Prediction", fontsize=12)
+    plt.imshow(mp_color_mask)
+    plt.axis("off")
+    
+    plt.savefig("./results/mp_vs_fp32_visualization.png", dpi=150, bbox_inches='tight')
+    plt.close()

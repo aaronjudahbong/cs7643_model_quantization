@@ -1,7 +1,8 @@
 import torch
 import time
+import json
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Dict, Optional, Union
 
 def calculate_miou(predictions: torch.Tensor, targets: torch.Tensor, num_classes: int = 19, ignore_index: int = 255) -> float:
     """
@@ -70,6 +71,71 @@ def calculate_model_size(model: torch.nn.Module, quantization_bits: int = None) 
     
     return model_size_mb
 
+def calculate_model_size_mixed_precision(model: torch.nn.Module, quantization_bits: Optional[int] = None, layer_bit_depths: Optional[Union[Dict[str, int], str]] = None) -> float:
+    """
+    Calculate model memory size in MB from model's parameters and buffers. Works on both 
+    non-quantized and quantized models, provided the quantized model is converted using 
+    quantize_fx.convert_fx.
+    
+    Args:
+        model: PyTorch model, NOT converted to quantized model!
+        quantization_bits: If provided, calculate theoretical size assuming parameters
+                          are stored at this bit-width (e.g., 4 for int4). Used for uniform
+                          quantization. If None, calculates actual storage size.
+        layer_bit_depths: For mixed-precision models, either:
+                         - Dict mapping layer/module names to bit depths (8, 6, or 4)
+                         - Path to JSON file containing layer bit depths mapping
+                         If provided, overrides quantization_bits and uses per-layer bit depths.
+    
+    Returns:
+        model_size_mb: In-memory size in MB
+    """
+    # Load layer bit depths if path provided
+    if isinstance(layer_bit_depths, str):
+        with open(layer_bit_depths, 'r') as f:
+            layer_bit_depths = json.load(f)
+    
+    # Calculate size from model parameters
+    if layer_bit_depths is not None:
+        # Mixed-precision: use per-layer bit depths
+        # Layer bit depths are extracted from the same model using named_modules(), 
+        # so module names should match exactly
+        param_size = 0
+        unmatched_modules = []
+        
+        # Iterate through modules (same as in compute_layer_entropies.py and mixed_precision.py)
+        for module_name, module in model.named_modules():
+            if module_name in layer_bit_depths:
+                bit_depth = layer_bit_depths[module_name]
+                bytes_per_element = bit_depth / 8.0
+                # Get all parameters for this module
+                for param in module.parameters(recurse=False):  # recurse=False to only get direct params
+                    param_size += param.numel() * bytes_per_element
+            else:
+                # Track unmatched modules for debugging
+                # Only count if module has parameters (to avoid noise from modules without params)
+                if sum(1 for _ in module.parameters(recurse=False)) > 0:
+                    unmatched_modules.append(module_name)
+                    # Use int8 as fallback
+                    bytes_per_element = 1.0 
+                    for param in module.parameters(recurse=False):
+                        param_size += param.numel() * bytes_per_element
+        
+        if unmatched_modules:
+            print(f"Warning: {len(unmatched_modules)} modules with parameters not found in layer_bit_depths, using int8 size")
+    elif quantization_bits is not None:
+        # Uniform quantization
+        bytes_per_element = quantization_bits / 8.0
+        param_size = sum(p.numel() * bytes_per_element for p in model.parameters())
+    else:
+        # No quantization: use actual storage size
+        param_size = sum(p.numel() * p.element_size() for p in model.parameters())
+    
+    # Torch buffers are not quantized, use actual size
+    buffer_size = sum(b.numel() * b.element_size() for b in model.buffers())
+    model_size_mb = (param_size + buffer_size) / (1000 ** 2)
+    
+    return model_size_mb
 
 def measure_inference_latency(model: torch.nn.Module, input_shape: Tuple[int, int, int], 
                              device: str, num_warmup: int = 10, num_runs: int = 100) -> dict:
