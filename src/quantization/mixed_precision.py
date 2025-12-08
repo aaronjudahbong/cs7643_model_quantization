@@ -241,7 +241,7 @@ if __name__ == "__main__":
     # for name, param in prepared_model.named_modules():
     #     print(f"{name}")
     for name, param in prepared_model.named_parameters():
-        print(f"{name}, min: {param.data.min().item()}, max: {param.data.max().item()}")
+        print(f"{name}, min: {param.min()}, max: {param.max()}")
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
