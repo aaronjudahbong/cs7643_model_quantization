@@ -242,6 +242,17 @@ if __name__ == "__main__":
     #     print(f"{name}")
     for name, param in prepared_model.named_parameters():
         print(f"{name}, min: {param.min()}, max: {param.max()}")
+    for module_name, module in prepared_model.named_modules():
+        if hasattr(module, "weight_fake_quant"):
+
+            fq = module.weight_fake_quant
+            ap = fq.activation_post_process
+
+            print(f"\nModule: {module_name}")
+            print(f"  scale:       {fq.scale.item()}")
+            print(f"  zero_point:  {fq.zero_point.item()}")
+            print(f"  quant_min:   {ap.quant_min}")
+            print(f"  quant_max:   {ap.quant_max}")
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
