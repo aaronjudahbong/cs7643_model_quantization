@@ -236,11 +236,12 @@ if __name__ == "__main__":
     scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
 
     # TODO remove 
-    for name, param in prepared_model.named_modules():
-        print(f"{name}: {param}")
+    print("layer bit depths:")
     print(layer_bit_depths)
+    for name, param in prepared_model.named_modules():
+        print(f"{name}")
     for name, param in prepared_model.named_parameters():
-        print(f"{name}: {param}")
+        print(f"{name}")
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
