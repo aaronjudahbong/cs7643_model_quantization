@@ -77,8 +77,15 @@ def build_qconfig(quantization_type, config):
             quant_min=act_quant_min,
             quant_max=act_quant_max,
         )
+    elif activations_observer == 'movingavg':
+        act_observer = tq.MovingAverageMinMaxObserver.with_args(
+            dtype=act_dtype,
+            qscheme=act_scheme,
+            quant_min=act_quant_min,
+            quant_max=act_quant_max,
+        )
     else:
-        raise ValueError(f"Activations observer {activations_observer} not supported - must be 'minmax' or 'histogram'")
+        raise ValueError(f"Activations observer {activations_observer} not supported - must be 'minmax', 'histogram' or 'movingavg'")
 
     global_config = tq.QConfig(activation=act_observer, weight=weight_observer)
     # Apply qconfig to entire model/for all layers
