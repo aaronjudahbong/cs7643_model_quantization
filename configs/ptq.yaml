@@ -14,7 +14,7 @@ ptq:
     observer: "minmax"
 
   calibration:
-    steps: 32
+    steps: 250
 
   skip_aspp: True
   backbone_only: True
