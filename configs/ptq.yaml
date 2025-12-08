@@ -14,9 +14,10 @@ ptq:
     observer: "minmax"
 
   calibration:
-    steps: 128
+    steps: 32
 
   skip_aspp: True
+  backbone_only: True
 
 qat:
   model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
@@ -50,6 +51,7 @@ qat:
       flip: False
 
   skip_aspp: True
+  backbone_only: False
 
 fp:
   training:
