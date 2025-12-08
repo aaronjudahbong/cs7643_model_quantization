@@ -250,6 +250,24 @@ if __name__ == "__main__":
     #         print(f"\nModule: {module_name}")
     #         print(f"  quant_min:   {fq.quant_min}")
     #         print(f"  quant_max:   {fq.quant_max}")
+    import torch.ao.quantization.observer as obs
+
+for name, module in prepared_model.named_modules():
+    if isinstance(module, obs.ObserverBase):
+        # This is an activation or weight observer
+        # But activation ones are the standalone ones
+        print("\nObserver:", name)
+        print("  quant_min:", module.quant_min)
+        print("  quant_max:", module.quant_max)
+
+        # Optional: show min/max stats if collected
+        if hasattr(module, "min_val"):
+            print("  min_val:", module.min_val)
+            print("  max_val:", module.max_val)
+        elif hasattr(module, "min_vals"):   # per-channel version
+            print("  min_vals:", module.min_vals)
+            print("  max_vals:", module.max_vals)
+
     print(prepared_model.graph)
 
 
