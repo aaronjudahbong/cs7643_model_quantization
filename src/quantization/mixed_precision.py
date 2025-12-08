@@ -376,7 +376,8 @@ if __name__ == "__main__":
     image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
     ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
     image = Image.open(image_path).convert("RGB")
-    # Normalize image.
+    
+    # Normalize image
     normalize_image = T.Normalize(
         mean = [0.485, 0.456, 0.406],
         std = [0.229, 0.224, 0.225]
@@ -385,32 +386,66 @@ if __name__ == "__main__":
     image_tensor = normalize_image(image_tensor)
     image_tensor = image_tensor.unsqueeze(0).to(device)
 
+    # Load FP32 model for comparison
+    print("Loading FP32 model for comparison...")
+    fp32_model = get_empty_model(num_classes=19)
+    fp32_checkpoint = "models/finetuned_model_last_epoch.pth"
+    fp32_model = load_model(fp32_model, fp32_checkpoint, device=device)
+    fp32_model = fp32_model.to(device)
+    fp32_model.eval()
+
+    # Run inference on both models
     with torch.no_grad():
-        output = prepared_model(image_tensor)['out']
-        predicted_mask = torch.argmax(output.squeeze(), dim=0).detach().cpu().numpy()
+        # FP32 model prediction
+        fp32_output = fp32_model(image_tensor)['out']
+        fp32_predicted_mask = torch.argmax(fp32_output.squeeze(), dim=0).detach().cpu().numpy()
+        
+        # Mixed-precision model prediction
+        prepared_model.eval()  # Set to eval for inference
+        mp_output = prepared_model(image_tensor)['out']
+        mp_predicted_mask = torch.argmax(mp_output.squeeze(), dim=0).detach().cpu().numpy()
 
     # Map train IDs to colors for visualization
-    height, width = predicted_mask.shape
-    color_mask = np.zeros((height, width, 3), dtype=np.uint8)
-    for train_id, color in map_train_id_to_color.items():
-        color_mask[predicted_mask == train_id] = color  
+    def mask_to_color(mask):
+        height, width = mask.shape
+        color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+        for train_id, color in map_train_id_to_color.items():
+            color_mask[mask == train_id] = color
+        return color_mask
 
-    # Display original image and predicted mask
-    plt.figure(constrained_layout=True)
-    plt.subplot(1, 3, 1)
-    plt.title("Original Image")
+    fp32_color_mask = mask_to_color(fp32_predicted_mask)
+    mp_color_mask = mask_to_color(mp_predicted_mask)
+
+    # Display comparison
+    plt.figure(figsize=(20, 4), constrained_layout=True)
+    
+    plt.subplot(1, 5, 1)
+    plt.title("Original Image", fontsize=12)
     plt.imshow(image)
     plt.axis("off")
 
-    plt.subplot(1, 3, 2)
-    plt.title("Ground Truth Mask")
+    plt.subplot(1, 5, 2)
+    plt.title("Ground Truth", fontsize=12)
     ground_truth = Image.open(ground_truth_path)
     plt.imshow(ground_truth)
     plt.axis("off")
 
-    plt.subplot(1, 3, 3)
-    plt.title("Predicted Mask")
-    plt.imshow(color_mask)
+    plt.subplot(1, 5, 3)
+    plt.title("FP32 Model Prediction", fontsize=12)
+    plt.imshow(fp32_color_mask)
     plt.axis("off")
-    plt.savefig("./results/mixed_precision_visualization.png")
+
+    plt.subplot(1, 5, 4)
+    plt.title("Mixed-Precision Model Prediction", fontsize=12)
+    plt.imshow(mp_color_mask)
+    plt.axis("off")
+
+    plt.subplot(1, 5, 5)
+    plt.title("Difference (FP32 vs MP)", fontsize=12)
+    # Show pixels where predictions differ
+    difference_mask = (fp32_predicted_mask != mp_predicted_mask).astype(np.uint8) * 255
+    plt.imshow(difference_mask, cmap='hot')
+    plt.axis("off")
+    
+    plt.savefig("./results/mp_vs_fp32_visualization.png", dpi=150, bbox_inches='tight')
     plt.close()
