@@ -238,10 +238,10 @@ if __name__ == "__main__":
     # TODO remove 
     print("layer bit depths:")
     print(layer_bit_depths)
-    for name, param in prepared_model.named_modules():
-        print(f"{name}")
+    # for name, param in prepared_model.named_modules():
+    #     print(f"{name}")
     for name, param in prepared_model.named_parameters():
-        print(f"{name}")
+        print(f"{name}, min: {param.data.min().item()}, max: {param.data.max().item()}")
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
