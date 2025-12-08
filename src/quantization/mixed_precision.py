@@ -246,13 +246,12 @@ if __name__ == "__main__":
         if hasattr(module, "weight_fake_quant"):
 
             fq = module.weight_fake_quant
-            ap = fq.activation_post_process
 
             print(f"\nModule: {module_name}")
             print(f"  scale:       {fq.scale.item()}")
             print(f"  zero_point:  {fq.zero_point.item()}")
-            print(f"  quant_min:   {ap.quant_min}")
-            print(f"  quant_max:   {ap.quant_max}")
+            print(f"  quant_min:   {fq.quant_min}")
+            print(f"  quant_max:   {fq.quant_max}")
 
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
