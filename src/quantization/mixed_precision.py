@@ -238,8 +238,8 @@ if __name__ == "__main__":
     # TODO remove 
     print("layer bit depths:")
     print(layer_bit_depths)
-    # for name, param in prepared_model.named_modules():
-    #     print(f"{name}")
+    for name, param in prepared_model.named_modules():
+        print(f"{name}")
     # for name, param in prepared_model.named_parameters():
     #     print(f"{name}, min: {param.min()}, max: {param.max()}")
     for module_name, module in prepared_model.named_modules():
@@ -306,70 +306,6 @@ if __name__ == "__main__":
         
         # Always save latest model
         save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
-    
-    # Sample 20 leaf layers and print assigned bit depth with weight min/max ranges
-    print("\n" + "="*80)
-    print("SAMPLING 20 LEAF LAYERS: ASSIGNED BIT DEPTH vs WEIGHT RANGES")
-    print("="*80)
-    print()
-    
-    # Collect leaf modules with assigned bit depths
-    # Match weight parameters directly by parameter name
-    leaf_layers = []
-    for name, module in prepared_model.named_modules():
-        # Check if it's a leaf module (no children)
-        if len(list(module.children())) == 0:
-            # Check if it has an assigned bit depth
-            if name in layer_bit_depths:
-                # Find weight parameter for this module by constructing the parameter name
-                # Parameter names are like "backbone.features.0.0.weight" for module "backbone.features.0.0"
-                weight_param_name = f"{name}.weight"
-                weight_param = None
-                
-                # Try exact match first
-                for param_name, param in prepared_model.named_parameters():
-                    if param_name == weight_param_name:
-                        weight_param = param
-                        break
-                
-                # If not found, try to find any weight parameter that belongs to this module
-                if weight_param is None:
-                    for param_name, param in prepared_model.named_parameters():
-                        if param.requires_grad and 'weight' in param_name:
-                            # Check if this parameter belongs to this module
-                            param_module_name = '.'.join(param_name.split('.')[:-1])
-                            if param_module_name == name:
-                                weight_param = param
-                                break
-                
-                if weight_param is not None:
-                    leaf_layers.append((name, layer_bit_depths[name], weight_param))
-    
-    # Sample 20 layers
-    num_to_sample = min(20, len(leaf_layers))
-    sampled_layers = leaf_layers[:num_to_sample]
-    
-    if len(sampled_layers) > 0:
-        # Print header
-        print(f"{'Layer Name':<50} {'Bit Depth':<12} {'Weight Min':<15} {'Weight Max':<15}")
-        print("-" * 92)
-        
-        # Print each layer
-        for layer_name, bit_depth, weight_param in sampled_layers:
-            weight_min = weight_param.data.min().item()
-            weight_max = weight_param.data.max().item()
-            # Debug: also print parameter name to verify we're getting different parameters
-            param_name = None
-            for pname, p in prepared_model.named_parameters():
-                if p is weight_param:
-                    param_name = pname
-                    break
-            print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}  (param: {param_name})")
-    else:
-        print("No leaf layers with assigned bit depths and weight parameters found.")
-    
-    print("="*80)
-    print()
 
     # calculate model size 
     print(f"Calculating model size...")
