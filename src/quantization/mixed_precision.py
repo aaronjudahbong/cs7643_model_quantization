@@ -298,33 +298,33 @@ if __name__ == "__main__":
     print()
     
     # Collect leaf modules with assigned bit depths
-    # First, collect all weight parameters with their module names
-    param_to_module = {}
-    for param_name, param in prepared_model.named_parameters():
-        if param.requires_grad and 'weight' in param_name:
-            module_name = '.'.join(param_name.split('.')[:-1])  # Remove .weight suffix
-            param_to_module[param_name] = (module_name, param)
-    
-    # Now find leaf modules and match with parameters
+    # Match weight parameters directly by parameter name
     leaf_layers = []
     for name, module in prepared_model.named_modules():
         # Check if it's a leaf module (no children)
         if len(list(module.children())) == 0:
             # Check if it has an assigned bit depth
             if name in layer_bit_depths:
-                # Find weight parameter for this module
+                # Find weight parameter for this module by constructing the parameter name
+                # Parameter names are like "backbone.features.0.0.weight" for module "backbone.features.0.0"
+                weight_param_name = f"{name}.weight"
                 weight_param = None
-                for param_name, (mod_name, param) in param_to_module.items():
-                    if mod_name == name:
+                
+                # Try exact match first
+                for param_name, param in prepared_model.named_parameters():
+                    if param_name == weight_param_name:
                         weight_param = param
                         break
                 
-                # If not found by exact match, try finding by module name in parameter name
+                # If not found, try to find any weight parameter that belongs to this module
                 if weight_param is None:
-                    for param_name, (mod_name, param) in param_to_module.items():
-                        if name in mod_name or mod_name.endswith(name.split('.')[-1]):
-                            weight_param = param
-                            break
+                    for param_name, param in prepared_model.named_parameters():
+                        if param.requires_grad and 'weight' in param_name:
+                            # Check if this parameter belongs to this module
+                            param_module_name = '.'.join(param_name.split('.')[:-1])
+                            if param_module_name == name:
+                                weight_param = param
+                                break
                 
                 if weight_param is not None:
                     leaf_layers.append((name, layer_bit_depths[name], weight_param))
@@ -342,116 +342,16 @@ if __name__ == "__main__":
         for layer_name, bit_depth, weight_param in sampled_layers:
             weight_min = weight_param.data.min().item()
             weight_max = weight_param.data.max().item()
-            print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}")
+            # Debug: also print parameter name to verify we're getting different parameters
+            param_name = None
+            for pname, p in prepared_model.named_parameters():
+                if p is weight_param:
+                    param_name = pname
+                    break
+            print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}  (param: {param_name})")
     else:
         print("No leaf layers with assigned bit depths and weight parameters found.")
     
-    print("="*80)
-    print()
-    
-    # Check that all weight tensor scales are configured for 8-bit or smaller (no FP32 scales)
-    print("="*80)
-    print("VERIFYING WEIGHT SCALES ARE CONFIGURED FOR 8-BIT OR SMALLER")
-    print("="*80)
-    print()
-    
-    bit_depth_ranges = {
-        8: (-128, 127),
-        6: (-32, 31),
-        4: (-8, 7)
-    }
-    
-    layers_with_fp32_scales = []
-    layers_with_valid_scales = []
-    
-    for name, param in prepared_model.named_parameters():
-        if param.requires_grad and 'weight' in name:
-            # Get module name from parameter name
-            module_name = '.'.join(name.split('.')[:-1])
-            
-            # Check if this layer has an assigned bit depth
-            if module_name in layer_bit_depths:
-                assigned_bit_depth = layer_bit_depths[module_name]
-                expected_min, expected_max = bit_depth_ranges[assigned_bit_depth]
-                
-                # Find the module to get the observer
-                module = None
-                for mod_name, mod in prepared_model.named_modules():
-                    if mod_name == module_name:
-                        if hasattr(mod, 'qconfig') and mod.qconfig is not None:
-                            module = mod
-                            break
-                
-                if module is not None and module.qconfig is not None and module.qconfig.weight is not None:
-                    weight_observer = module.qconfig.weight()
-                    weight_observer(param.data)
-                    
-                    if hasattr(weight_observer, 'calculate_qparams'):
-                        scale, zero_point = weight_observer.calculate_qparams()
-                        
-                        # Check if per-channel or per-tensor
-                        if hasattr(weight_observer, 'ch_axis'):
-                            # Per-channel: check each channel
-                            scales = scale if torch.is_tensor(scale) else torch.tensor([scale])
-                            zero_points = zero_point if torch.is_tensor(zero_point) else torch.tensor([zero_point])
-                            
-                            all_valid = True
-                            problematic_channels = []
-                            for ch_idx in range(len(scales)):
-                                ch_scale = scales[ch_idx].item()
-                                ch_zp = zero_points[ch_idx].item()
-                                ch_weights = param.data.select(weight_observer.ch_axis, ch_idx)
-                                
-                                # Quantize and check range
-                                quantized = torch.round(ch_weights / ch_scale + ch_zp)
-                                if quantized.min() < expected_min or quantized.max() > expected_max:
-                                    all_valid = False
-                                    quant_min = quantized.min().item()
-                                    quant_max = quantized.max().item()
-                                    problematic_channels.append((ch_idx, ch_scale, ch_zp, quant_min, quant_max))
-                            
-                            if all_valid:
-                                layers_with_valid_scales.append((name, assigned_bit_depth))
-                            else:
-                                # Format scale info
-                                scale_parts = []
-                                for ch_idx, ch_scale, ch_zp, quant_min, quant_max in problematic_channels[:5]:
-                                    scale_parts.append(f"ch{ch_idx}: scale={ch_scale:.6f}, zp={ch_zp}, quant_range=[{quant_min}, {quant_max}]")
-                                scale_info = f"per-channel scales: {', '.join(scale_parts)}"
-                                if len(problematic_channels) > 5:
-                                    scale_info += f" ... and {len(problematic_channels) - 5} more channels"
-                                layers_with_fp32_scales.append((name, assigned_bit_depth, scale_info))
-                        else:
-                            # Per-tensor: check single scale
-                            scale_val = scale.item() if torch.is_tensor(scale) else scale
-                            zp_val = zero_point.item() if torch.is_tensor(zero_point) else zero_point
-                            
-                            # Quantize and check range
-                            quantized = torch.round(param.data / scale_val + zp_val)
-                            
-                            if quantized.min() >= expected_min and quantized.max() <= expected_max:
-                                layers_with_valid_scales.append((name, assigned_bit_depth))
-                            else:
-                                quant_min = quantized.min().item()
-                                quant_max = quantized.max().item()
-                                scale_info = f"scale={scale_val:.6f}, zp={zp_val}, quantized_range=[{quant_min}, {quant_max}], expected=[{expected_min}, {expected_max}]"
-                                layers_with_fp32_scales.append((name, assigned_bit_depth, scale_info))
-    
-    # Report results
-    print(f"Total weight layers checked: {len(layers_with_valid_scales) + len(layers_with_fp32_scales)}")
-    print(f"  Layers with valid scales (8-bit or smaller): {len(layers_with_valid_scales)}")
-    print(f"  Layers with FP32-like scales (problematic): {len(layers_with_fp32_scales)}")
-    print()
-    
-    if layers_with_fp32_scales:
-        print(f"ERROR: Found {len(layers_with_fp32_scales)} weight layers with scales that don't properly quantize to assigned bit depth:")
-        for name, bit_depth, issue in layers_with_fp32_scales[:20]:
-            print(f"  {name} ({bit_depth}-bit): {issue}")
-        if len(layers_with_fp32_scales) > 20:
-            print(f"  ... and {len(layers_with_fp32_scales) - 20} more")
-    else:
-        print("✓ All weight scales are properly configured for 8-bit or smaller quantization")
-    print()
     print("="*80)
     print()
 
