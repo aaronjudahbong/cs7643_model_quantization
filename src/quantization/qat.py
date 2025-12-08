@@ -77,9 +77,9 @@ def run_qat(idx, config, results_dir):
     train_dataset = cityScapesDataset(train_img_path, train_label_path, config['training']['train_transforms'])
     val_dataset = cityScapesDataset(val_img_path, val_label_path, config['training']['val_transforms'])
 
-    cal_dataloader = DataLoader(cal_dataset, batch_size=2, shuffle=True)
-    train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size'], shuffle=False)
+    cal_dataloader = DataLoader(cal_dataset, batch_size=2, shuffle=True, num_workers=8, pin_memory=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['training']['batch_size'], shuffle=True, num_workers=8, pin_memory=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=config['training']['batch_size'], shuffle=False, num_workers=8, pin_memory=True)
 
     example_image, _ = next(iter(cal_dataloader))
     example_image = example_image.to(device)
