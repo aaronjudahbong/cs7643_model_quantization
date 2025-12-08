@@ -253,6 +253,13 @@ if __name__ == "__main__":
     best_val_loss = float('inf')
     training_history = {"train_loss": [], "val_loss": []}
     
+    # TODO remove 
+    for name, param in prepared_model.named_modules():
+        print(f"{name}: {param}")
+    print(layer_bit_depths)
+    for name, param in prepared_model.named_parameters():
+        print(f"{name}: {param}")
+
     for epoch in range(epochs):
         prepared_model.train()
         train_loss = 0
