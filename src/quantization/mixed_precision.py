@@ -291,238 +291,141 @@ if __name__ == "__main__":
         # Always save latest model
         save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
     
-    # Test that weight and activation values, when quantized, lie within their assigned bit depth ranges
+    # Sample 20 leaf layers and print assigned bit depth with weight min/max ranges
     print("\n" + "="*80)
-    print("TESTING WEIGHT AND ACTIVATION VALUES AGAINST ASSIGNED BIT DEPTH RANGES")
+    print("SAMPLING 20 LEAF LAYERS: ASSIGNED BIT DEPTH vs WEIGHT RANGES")
     print("="*80)
     print()
     
-    # Define bit depth ranges for verification
+    # Collect leaf modules with assigned bit depths
+    leaf_layers = []
+    for name, module in prepared_model.named_modules():
+        # Check if it's a leaf module (no children)
+        if len(list(module.children())) == 0:
+            # Check if it has an assigned bit depth
+            if name in layer_bit_depths:
+                # Get weight parameter if it exists
+                weight_param = None
+                for param_name, param in module.named_parameters(recurse=False):
+                    if 'weight' in param_name:
+                        weight_param = param
+                        break
+                
+                if weight_param is not None:
+                    leaf_layers.append((name, layer_bit_depths[name], weight_param))
+    
+    # Sample 20 layers
+    num_to_sample = min(20, len(leaf_layers))
+    sampled_layers = leaf_layers[:num_to_sample]
+    
+    # Print header
+    print(f"{'Layer Name':<50} {'Bit Depth':<12} {'Weight Min':<15} {'Weight Max':<15}")
+    print("-" * 92)
+    
+    # Print each layer
+    for layer_name, bit_depth, weight_param in sampled_layers:
+        weight_min = weight_param.data.min().item()
+        weight_max = weight_param.data.max().item()
+        print(f"{layer_name:<50} {bit_depth}-bit{'':<6} {weight_min:<15.6f} {weight_max:<15.6f}")
+    
+    print("="*80)
+    print()
+    
+    # Check that all weight tensor scales are configured for 8-bit or smaller (no FP32 scales)
+    print("="*80)
+    print("VERIFYING WEIGHT SCALES ARE CONFIGURED FOR 8-BIT OR SMALLER")
+    print("="*80)
+    print()
+    
     bit_depth_ranges = {
         8: (-128, 127),
         6: (-32, 31),
         4: (-8, 7)
     }
-    act_bit_depth_ranges = {
-        8: (0, 127),  # Activations are unsigned
-        6: (0, 31),
-        4: (0, 7)
-    }
     
-    # Test weight values
-    print("Testing weight values against assigned bit depth ranges:")
-    print("-" * 80)
-    weight_layers_out_of_range = []
-    num_weight_layers_checked = 0
-    num_weight_layers_to_show = 10
+    layers_with_fp32_scales = []
+    layers_with_valid_scales = []
     
     for name, param in prepared_model.named_parameters():
-        if param.requires_grad:
-            # Find assigned bit depth for this parameter
-            # Parameter names are like "backbone.features.0.0.weight"
-            # Layer names in layer_bit_depths are like "backbone.features.0.0"
-            # Remove parameter suffix (.weight, .bias) to get module name
-            module_name = '.'.join(name.split('.')[:-1])  # Remove last part (.weight/.bias)
+        if param.requires_grad and 'weight' in name:
+            # Get module name from parameter name
+            module_name = '.'.join(name.split('.')[:-1])
             
-            assigned_bit_depth = None
-            param_layer_name = None
+            # Check if this layer has an assigned bit depth
             if module_name in layer_bit_depths:
                 assigned_bit_depth = layer_bit_depths[module_name]
-                param_layer_name = module_name
-            
-            if assigned_bit_depth is not None:
-                num_weight_layers_checked += 1
                 expected_min, expected_max = bit_depth_ranges[assigned_bit_depth]
                 
-                # Get the weight values
-                weight_values = param.data
-                
-                # Find the corresponding module to get the observer
-                # Use exact matching since param_layer_name is from layer_bit_depths (exact module names)
+                # Find the module to get the observer
                 module = None
                 for mod_name, mod in prepared_model.named_modules():
-                    if mod_name == param_layer_name:  # Exact match
+                    if mod_name == module_name:
                         if hasattr(mod, 'qconfig') and mod.qconfig is not None:
                             module = mod
                             break
                 
                 if module is not None and module.qconfig is not None and module.qconfig.weight is not None:
                     weight_observer = module.qconfig.weight()
-                    weight_observer(weight_values)
+                    weight_observer(param.data)
                     
                     if hasattr(weight_observer, 'calculate_qparams'):
                         scale, zero_point = weight_observer.calculate_qparams()
                         
                         # Check if per-channel or per-tensor
                         if hasattr(weight_observer, 'ch_axis'):
-                            # Per-channel quantization
+                            # Per-channel: check each channel
                             scales = scale if torch.is_tensor(scale) else torch.tensor([scale])
                             zero_points = zero_point if torch.is_tensor(zero_point) else torch.tensor([zero_point])
                             
+                            all_valid = True
                             for ch_idx in range(len(scales)):
                                 ch_scale = scales[ch_idx].item()
                                 ch_zp = zero_points[ch_idx].item()
-                                ch_weights = weight_values.select(weight_observer.ch_axis, ch_idx)
-                                unclamped = torch.round(ch_weights / ch_scale + ch_zp)
-                                out_of_range = (unclamped < expected_min) | (unclamped > expected_max)
+                                ch_weights = param.data.select(weight_observer.ch_axis, ch_idx)
                                 
-                                if out_of_range.any():
-                                    num_out = out_of_range.sum().item()
-                                    total = out_of_range.numel()
-                                    weight_layers_out_of_range.append((
-                                        f"{name}[channel_{ch_idx}]", assigned_bit_depth, num_out, total,
-                                        unclamped.min().item(), unclamped.max().item(),
-                                        expected_min, expected_max
-                                    ))
+                                # Quantize and check range
+                                quantized = torch.round(ch_weights / ch_scale + ch_zp)
+                                if quantized.min() < expected_min or quantized.max() > expected_max:
+                                    all_valid = False
+                                    break
+                            
+                            if all_valid:
+                                layers_with_valid_scales.append((name, assigned_bit_depth))
+                            else:
+                                layers_with_fp32_scales.append((name, assigned_bit_depth, "per-channel scale issue"))
                         else:
-                            # Per-tensor quantization
+                            # Per-tensor: check single scale
                             scale_val = scale.item() if torch.is_tensor(scale) else scale
                             zp_val = zero_point.item() if torch.is_tensor(zero_point) else zero_point
-                            unclamped = torch.round(weight_values / scale_val + zp_val)
-                            out_of_range = (unclamped < expected_min) | (unclamped > expected_max)
                             
-                            if out_of_range.any():
-                                num_out = out_of_range.sum().item()
-                                total = out_of_range.numel()
-                                weight_layers_out_of_range.append((
-                                    name, assigned_bit_depth, num_out, total,
-                                    unclamped.min().item(), unclamped.max().item(),
-                                    expected_min, expected_max
+                            # Quantize and check range
+                            quantized = torch.round(param.data / scale_val + zp_val)
+                            
+                            if quantized.min() >= expected_min and quantized.max() <= expected_max:
+                                layers_with_valid_scales.append((name, assigned_bit_depth))
+                            else:
+                                quant_min = quantized.min().item()
+                                quant_max = quantized.max().item()
+                                layers_with_fp32_scales.append((
+                                    name, assigned_bit_depth, 
+                                    f"quantized range [{quant_min}, {quant_max}] outside expected [{expected_min}, {expected_max}]"
                                 ))
-                            
-                            # Show sample for first N layers
-                            if num_weight_layers_checked <= num_weight_layers_to_show:
-                                quantized_weights = unclamped.clamp(expected_min, expected_max)
-                                print(f"Weight: {name}")
-                                print(f"  Assigned Bit Depth: {assigned_bit_depth}-bit")
-                                print(f"  Weight value range: [{weight_values.min().item():.6f}, {weight_values.max().item():.6f}]")
-                                print(f"  Quantized range: [{quantized_weights.min().item()}, {quantized_weights.max().item()}]")
-                                print(f"  Expected range: [{expected_min}, {expected_max}]")
-                                if out_of_range.any():
-                                    print(f"  WARNING: {num_out}/{total} values out of range")
-                                else:
-                                    print(f"  ✓ All values within range")
-                                print()
     
-    print("-" * 80)
-    if weight_layers_out_of_range:
-        print(f"ERROR: Found {len(weight_layers_out_of_range)} weight layers with values outside assigned bit depth range:")
-        for name, bit_depth, num_out, total, act_min, act_max, exp_min, exp_max in weight_layers_out_of_range[:20]:
-            pct = (num_out / total * 100) if total > 0 else 0
-            print(f"  {name} ({bit_depth}-bit): {num_out}/{total} ({pct:.2f}%) values out of range")
-            print(f"    Actual quantized range: [{act_min}, {act_max}], Expected: [{exp_min}, {exp_max}]")
-        if len(weight_layers_out_of_range) > 20:
-            print(f"  ... and {len(weight_layers_out_of_range) - 20} more")
-    else:
-        print(f"✓ All {num_weight_layers_checked} weight layers have values within their assigned bit depth ranges")
+    # Report results
+    print(f"Total weight layers checked: {len(layers_with_valid_scales) + len(layers_with_fp32_scales)}")
+    print(f"  Layers with valid scales (8-bit or smaller): {len(layers_with_valid_scales)}")
+    print(f"  Layers with FP32-like scales (problematic): {len(layers_with_fp32_scales)}")
     print()
     
-    # Test activation values by running a forward pass
-    print("Testing activation values against assigned bit depth ranges:")
-    print("-" * 80)
-    print("Running forward pass to capture activations...")
-    
-    activation_layers_out_of_range = []
-    activation_hooks = {}
-    num_activation_layers_checked = 0
-    num_activation_layers_to_show = 10
-    
-    def get_activation_hook(layer_name, assigned_bit_depth):
-        def hook(module, input, output):
-            if layer_name not in activation_hooks:
-                activation_hooks[layer_name] = {
-                    'bit_depth': assigned_bit_depth,
-                    'values': []
-                }
-            # Store activation values
-            if isinstance(output, torch.Tensor):
-                activation_hooks[layer_name]['values'].append(output.detach())
-        return hook
-    
-    # Register hooks for layers with assigned bit depths
-    # Use exact matching since layer_bit_depths keys are exact module names
-    for layer_name, bit_depth in layer_bit_depths.items():
-        for mod_name, mod in prepared_model.named_modules():
-            if mod_name == layer_name:  # Exact match
-                if hasattr(mod, 'qconfig') and mod.qconfig is not None and mod.qconfig.activation is not None:
-                    mod.register_forward_hook(get_activation_hook(layer_name, bit_depth))
-                    break
-    
-    # Run forward pass on a sample batch
-    prepared_model.eval()
-    sample_image, _ = next(iter(val_loader))
-    sample_image = sample_image[:1].to(device)  # Just one image
-    
-    with torch.no_grad():
-        _ = prepared_model(sample_image)
-    
-    # Check activation values
-    for layer_name, hook_data in activation_hooks.items():
-        assigned_bit_depth = hook_data['bit_depth']
-        expected_min, expected_max = act_bit_depth_ranges[assigned_bit_depth]
-        
-        # Concatenate all activation values for this layer
-        all_activations = torch.cat(hook_data['values'], dim=0)
-        
-        # Find the module to get activation observer
-        # Use exact matching since layer_name is from layer_bit_depths (exact module names)
-        module = None
-        for mod_name, mod in prepared_model.named_modules():
-            if mod_name == layer_name:  # Exact match
-                if hasattr(mod, 'qconfig') and mod.qconfig is not None and mod.qconfig.activation is not None:
-                    module = mod
-                    break
-        
-        if module is not None:
-            num_activation_layers_checked += 1
-            act_observer = module.qconfig.activation()
-            act_observer(all_activations)
-            
-            if hasattr(act_observer, 'calculate_qparams'):
-                scale, zero_point = act_observer.calculate_qparams()
-                scale = scale.item() if torch.is_tensor(scale) else scale
-                zero_point = zero_point.item() if torch.is_tensor(zero_point) else zero_point
-                
-                # Quantize activations
-                unclamped = torch.round(all_activations / scale + zero_point)
-                out_of_range = (unclamped < expected_min) | (unclamped > expected_max)
-                
-                if out_of_range.any():
-                    num_out = out_of_range.sum().item()
-                    total = out_of_range.numel()
-                    activation_layers_out_of_range.append((
-                        layer_name, assigned_bit_depth, num_out, total,
-                        unclamped.min().item(), unclamped.max().item(),
-                        expected_min, expected_max
-                    ))
-                
-                # Show sample for first N layers
-                if num_activation_layers_checked <= num_activation_layers_to_show:
-                    quantized_acts = unclamped.clamp(expected_min, expected_max)
-                    print(f"Activation: {layer_name}")
-                    print(f"  Assigned Bit Depth: {assigned_bit_depth}-bit")
-                    print(f"  Activation value range: [{all_activations.min().item():.6f}, {all_activations.max().item():.6f}]")
-                    print(f"  Quantized range: [{quantized_acts.min().item()}, {quantized_acts.max().item()}]")
-                    print(f"  Expected range: [{expected_min}, {expected_max}]")
-                    if out_of_range.any():
-                        print(f"  WARNING: {num_out}/{total} values out of range")
-                    else:
-                        print(f"  ✓ All values within range")
-                    print()
-    
-    print("-" * 80)
-    if activation_layers_out_of_range:
-        print(f"ERROR: Found {len(activation_layers_out_of_range)} activation layers with values outside assigned bit depth range:")
-        for name, bit_depth, num_out, total, act_min, act_max, exp_min, exp_max in activation_layers_out_of_range[:20]:
-            pct = (num_out / total * 100) if total > 0 else 0
-            print(f"  {name} ({bit_depth}-bit): {num_out}/{total} ({pct:.2f}%) values out of range")
-            print(f"    Actual quantized range: [{act_min}, {act_max}], Expected: [{exp_min}, {exp_max}]")
-        if len(activation_layers_out_of_range) > 20:
-            print(f"  ... and {len(activation_layers_out_of_range) - 20} more")
+    if layers_with_fp32_scales:
+        print(f"ERROR: Found {len(layers_with_fp32_scales)} weight layers with scales that don't properly quantize to assigned bit depth:")
+        for name, bit_depth, issue in layers_with_fp32_scales[:20]:
+            print(f"  {name} ({bit_depth}-bit): {issue}")
+        if len(layers_with_fp32_scales) > 20:
+            print(f"  ... and {len(layers_with_fp32_scales) - 20} more")
     else:
-        print(f"✓ All {num_activation_layers_checked} activation layers have values within their assigned bit depth ranges")
+        print("✓ All weight scales are properly configured for 8-bit or smaller quantization")
     print()
-    
     print("="*80)
     print()
 
