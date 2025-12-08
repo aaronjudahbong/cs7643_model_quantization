@@ -291,6 +291,160 @@ if __name__ == "__main__":
         # Always save latest model
         save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
     
+    # Verify quantization configs and fake quantization (QAT mode - weights are FP32 but fake quantized)
+    print("\n" + "="*80)
+    print("VERIFYING QUANTIZATION CONFIGS AND FAKE QUANTIZATION (QAT Mode)")
+    print("="*80)
+    print("NOTE: In QAT mode, weights are FP32 but fake quantization constrains values during forward pass")
+    print("Checking that all layers have quantization configs and observers with correct bit depth ranges")
+    print()
+    
+    # Define bit depth ranges for verification
+    bit_depth_ranges = {
+        8: (-128, 127),
+        6: (-32, 31),
+        4: (-8, 7)
+    }
+    
+    # Check model structure for FakeQuantize modules and observers
+    from torch.ao.quantization.fake_quantize import FakeQuantize
+    from torch.ao.quantization.observer import ObserverBase
+    
+    layers_without_qconfig = []
+    layers_with_qconfig = []
+    layers_with_wrong_observer_range = []
+    num_layers_to_show = 10
+    layer_count = 0
+    
+    # Check all modules for quantization configs
+    for name, module in prepared_model.named_modules():
+        # Skip non-leaf modules
+        if len(list(module.children())) > 0:
+            continue
+            
+        # Check if module has a qconfig
+        has_qconfig = hasattr(module, 'qconfig') and module.qconfig is not None
+        
+        if has_qconfig:
+            layers_with_qconfig.append(name)
+            
+            # Try to find assigned bit depth
+            assigned_bit_depth = None
+            for layer_name, bit_depth in layer_bit_depths.items():
+                if layer_name in name or name.endswith(layer_name.split('.')[-1]):
+                    assigned_bit_depth = bit_depth
+                    break
+            
+            if assigned_bit_depth is not None:
+                # Check observer ranges
+                weight_observer = module.qconfig.weight() if module.qconfig.weight else None
+                act_observer = module.qconfig.activation() if module.qconfig.activation else None
+                
+                # Verify weight observer range
+                if weight_observer is not None:
+                    if hasattr(weight_observer, 'quant_min') and hasattr(weight_observer, 'quant_max'):
+                        obs_min = weight_observer.quant_min
+                        obs_max = weight_observer.quant_max
+                        exp_min, exp_max = bit_depth_ranges[assigned_bit_depth]
+                        
+                        if obs_min != exp_min or obs_max != exp_max:
+                            layers_with_wrong_observer_range.append((name, assigned_bit_depth, 'weight', obs_min, obs_max, exp_min, exp_max))
+                
+                # Show sample for first N layers
+                if layer_count < num_layers_to_show:
+                    print(f"Module: {name}")
+                    print(f"  Type: {type(module).__name__}")
+                    print(f"  Has QConfig: True")
+                    if assigned_bit_depth:
+                        print(f"  Assigned Bit Depth: {assigned_bit_depth}-bit")
+                        if weight_observer:
+                            print(f"  Weight Observer: {type(weight_observer).__name__}")
+                            if hasattr(weight_observer, 'quant_min'):
+                                print(f"    Range: [{weight_observer.quant_min}, {weight_observer.quant_max}]")
+                        if act_observer:
+                            print(f"  Activation Observer: {type(act_observer).__name__}")
+                    print()
+                    layer_count += 1
+        else:
+            # Check if this is a parameter layer that should have quantization
+            has_params = any(p.requires_grad for p in module.parameters(recurse=False))
+            if has_params:
+                # Check if it's in layer_bit_depths (should be quantized)
+                should_be_quantized = False
+                for layer_name in layer_bit_depths.keys():
+                    if layer_name in name or name.endswith(layer_name.split('.')[-1]):
+                        should_be_quantized = True
+                        break
+                
+                if should_be_quantized:
+                    layers_without_qconfig.append(name)
+    
+    # Check for FakeQuantize modules (these are inserted by prepare_qat_fx)
+    fake_quantize_modules = []
+    for name, module in prepared_model.named_modules():
+        if isinstance(module, FakeQuantize):
+            fake_quantize_modules.append(name)
+    
+    # Report results
+    print("="*80)
+    print("VERIFICATION RESULTS")
+    print("="*80)
+    print(f"Total modules with QConfig: {len(layers_with_qconfig)}")
+    print(f"Total FakeQuantize modules: {len(fake_quantize_modules)}")
+    print()
+    
+    # Check for layers without QConfig (should be ZERO for layers that should be quantized)
+    if layers_without_qconfig:
+        print(f"ERROR: Found {len(layers_without_qconfig)} layers that should be quantized but have no QConfig:")
+        for layer_name in layers_without_qconfig[:20]:
+            print(f"  {layer_name}")
+        if len(layers_without_qconfig) > 20:
+            print(f"  ... and {len(layers_without_qconfig) - 20} more")
+    else:
+        print("✓ All layers that should be quantized have QConfig assigned")
+    print()
+    
+    # Check for wrong observer ranges
+    if layers_with_wrong_observer_range:
+        print(f"WARNING: Found {len(layers_with_wrong_observer_range)} layers with observer ranges that don't match assigned bit depth:")
+        for name, bit_depth, obs_type, obs_min, obs_max, exp_min, exp_max in layers_with_wrong_observer_range[:10]:
+            print(f"  {name} ({bit_depth}-bit {obs_type}): observer range [{obs_min}, {obs_max}], expected [{exp_min}, {exp_max}]")
+        if len(layers_with_wrong_observer_range) > 10:
+            print(f"  ... and {len(layers_with_wrong_observer_range) - 10} more")
+    else:
+        print("✓ All observers have correct bit depth ranges")
+    print()
+    
+    # Check max bit depth
+    max_bit_depth = max(layer_bit_depths.values()) if layer_bit_depths else 8
+    if max_bit_depth > 8:
+        print(f"WARNING: Maximum bit depth is {max_bit_depth}, but should be ≤ 8")
+    else:
+        print(f"✓ Maximum bit depth is {max_bit_depth}-bit (≤ 8-bit)")
+    print()
+    
+    # Verify weights are FP32 (expected in QAT mode)
+    print("Verifying weight storage (should be FP32 in QAT mode):")
+    fp32_weight_layers = []
+    quantized_weight_layers = []
+    for name, param in prepared_model.named_parameters():
+        if param.requires_grad:
+            is_quantized = hasattr(param, 'int_repr')
+            if is_quantized:
+                quantized_weight_layers.append(name)
+            else:
+                fp32_weight_layers.append(name)
+    
+    print(f"  FP32 weight layers: {len(fp32_weight_layers)} (expected in QAT mode)")
+    print(f"  Quantized weight layers: {len(quantized_weight_layers)} (unexpected in QAT mode)")
+    if quantized_weight_layers:
+        print(f"  WARNING: Found quantized weights in QAT mode (should be FP32):")
+        for layer_name in quantized_weight_layers[:10]:
+            print(f"    {layer_name}")
+    
+    print("="*80)
+    print()
+
     # calculate model size 
     print(f"Calculating model size...")
     model_size_mb = calculate_model_size_mixed_precision(prepared_model, layer_bit_depths=layer_bit_depths)
@@ -298,6 +452,8 @@ if __name__ == "__main__":
     
     # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
+    prepared_model = prepared_model.to(device)
+    prepared_model.eval()
     all_predictions = []
     all_targets = []
     
@@ -320,10 +476,10 @@ if __name__ == "__main__":
     miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
 
-    # Save model
+    # Save prepared model (QAT mode)
     output_path = "models/mixed_precision_model.pth"
     save_model(prepared_model, output_path)
-    print(f"Mixed-precision model saved to {output_path}")
+    print(f"Mixed-precision model (QAT mode) saved to {output_path}")
     
     # Save training history
     history_output = "results/mixed_precision_training_history.json"
@@ -402,6 +558,7 @@ if __name__ == "__main__":
         
         # Mixed-precision model prediction
         prepared_model.eval()  # Set to eval for inference
+        prepared_model = prepared_model.to(device)
         mp_output = prepared_model(image_tensor)['out']
         mp_predicted_mask = torch.argmax(mp_output.squeeze(), dim=0).detach().cpu().numpy()
 
