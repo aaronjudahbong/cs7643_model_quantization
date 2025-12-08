@@ -1,5 +1,5 @@
 ptq:
-  model_checkpoint: "models/baseline_init_model.pth" # Change to model checkpoint path.
+  model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
   mode: "int8" # "default", "int8", "int6" or "int4"
 
   weights: 
@@ -11,10 +11,10 @@ ptq:
     dtype: "quint8" # Keep constant.
     scheme: "asymmetric" # "symmetric" or "asymmetric"
     granularity: "per_tensor" # Keep constant
-    observer: "minmax"
+    observer: "histogram"
 
   calibration:
-    steps: 250
+    steps: 200
 
   skip_aspp: True
   backbone_only: True

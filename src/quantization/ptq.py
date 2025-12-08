@@ -78,7 +78,7 @@ if __name__ == "__main__":
     # Grab a sample input from validation set with CalibrationDataset.
     dataroot = "data/leftImg8bit_trainvaltest/leftImg8bit/train"
     calib_dataset = CalibrationDataset(dataroot)
-    calib_dataloader = DataLoader(calib_dataset, batch_size=1, shuffle=True)
+    calib_dataloader = DataLoader(calib_dataset, batch_size=1, shuffle=False)
 
     sample_tensor = next(iter(calib_dataloader))
     prepared_model = quantize_fx.prepare_fx(model, qconfig_mapping, (sample_tensor,))
