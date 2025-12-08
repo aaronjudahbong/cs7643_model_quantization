@@ -225,7 +225,7 @@ if __name__ == "__main__":
     example_inputs = example_inputs.to(device)
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
     prepared_model = prepared_model.to(device)
-    prepared_model.train()
+    prepared_model.eval()
     
     # Setup training
     epochs = qat_config['training']['epochs']
