@@ -240,8 +240,8 @@ if __name__ == "__main__":
     print(layer_bit_depths)
     # for name, param in prepared_model.named_modules():
     #     print(f"{name}")
-    for name, param in prepared_model.named_parameters():
-        print(f"{name}, min: {param.min()}, max: {param.max()}")
+    # for name, param in prepared_model.named_parameters():
+    #     print(f"{name}, min: {param.min()}, max: {param.max()}")
     for module_name, module in prepared_model.named_modules():
         if hasattr(module, "weight_fake_quant"):
 
