@@ -319,13 +319,16 @@ if __name__ == "__main__":
     for name, param in prepared_model.named_parameters():
         if param.requires_grad:
             # Find assigned bit depth for this parameter
+            # Parameter names are like "backbone.features.0.0.weight"
+            # Layer names in layer_bit_depths are like "backbone.features.0.0"
+            # Remove parameter suffix (.weight, .bias) to get module name
+            module_name = '.'.join(name.split('.')[:-1])  # Remove last part (.weight/.bias)
+            
             assigned_bit_depth = None
             param_layer_name = None
-            for layer_name, bit_depth in layer_bit_depths.items():
-                if layer_name in name or name.endswith(layer_name.split('.')[-1]):
-                    assigned_bit_depth = bit_depth
-                    param_layer_name = layer_name
-                    break
+            if module_name in layer_bit_depths:
+                assigned_bit_depth = layer_bit_depths[module_name]
+                param_layer_name = module_name
             
             if assigned_bit_depth is not None:
                 num_weight_layers_checked += 1
@@ -335,9 +338,10 @@ if __name__ == "__main__":
                 weight_values = param.data
                 
                 # Find the corresponding module to get the observer
+                # Use exact matching since param_layer_name is from layer_bit_depths (exact module names)
                 module = None
                 for mod_name, mod in prepared_model.named_modules():
-                    if param_layer_name in mod_name or mod_name.endswith(param_layer_name.split('.')[-1]):
+                    if mod_name == param_layer_name:  # Exact match
                         if hasattr(mod, 'qconfig') and mod.qconfig is not None:
                             module = mod
                             break
@@ -436,9 +440,10 @@ if __name__ == "__main__":
         return hook
     
     # Register hooks for layers with assigned bit depths
+    # Use exact matching since layer_bit_depths keys are exact module names
     for layer_name, bit_depth in layer_bit_depths.items():
         for mod_name, mod in prepared_model.named_modules():
-            if layer_name in mod_name or mod_name.endswith(layer_name.split('.')[-1]):
+            if mod_name == layer_name:  # Exact match
                 if hasattr(mod, 'qconfig') and mod.qconfig is not None and mod.qconfig.activation is not None:
                     mod.register_forward_hook(get_activation_hook(layer_name, bit_depth))
                     break
@@ -460,9 +465,10 @@ if __name__ == "__main__":
         all_activations = torch.cat(hook_data['values'], dim=0)
         
         # Find the module to get activation observer
+        # Use exact matching since layer_name is from layer_bit_depths (exact module names)
         module = None
         for mod_name, mod in prepared_model.named_modules():
-            if layer_name in mod_name or mod_name.endswith(layer_name.split('.')[-1]):
+            if mod_name == layer_name:  # Exact match
                 if hasattr(mod, 'qconfig') and mod.qconfig is not None and mod.qconfig.activation is not None:
                     module = mod
                     break
