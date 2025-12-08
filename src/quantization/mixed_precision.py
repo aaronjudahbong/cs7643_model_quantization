@@ -248,8 +248,6 @@ if __name__ == "__main__":
             fq = module.weight_fake_quant
 
             print(f"\nModule: {module_name}")
-            print(f"  scale:       {fq.scale.item()}")
-            print(f"  zero_point:  {fq.zero_point.item()}")
             print(f"  quant_min:   {fq.quant_min}")
             print(f"  quant_max:   {fq.quant_max}")
 
