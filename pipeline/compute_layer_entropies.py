@@ -10,7 +10,7 @@ from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from pipeline.create_dataset import cityScapesDataset
 
 class ActivationHistogram:
-    def __init__(self, bins=1024):
+    def __init__(self, bins=256):
         self.bins = bins
         self.hist = None # np.ndarray
         self.min_val = float("inf")
