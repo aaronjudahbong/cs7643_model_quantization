@@ -235,6 +235,13 @@ if __name__ == "__main__":
                           weight_decay=float(qat_config['training']['weight_decay']))
     scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
 
+    # TODO remove 
+    for name, param in prepared_model.named_modules():
+        print(f"{name}: {param}")
+    print(layer_bit_depths)
+    for name, param in prepared_model.named_parameters():
+        print(f"{name}: {param}")
+
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
         print("Starting Calibration...")
@@ -252,13 +259,6 @@ if __name__ == "__main__":
     print("Starting Mixed-Precision QAT...")
     best_val_loss = float('inf')
     training_history = {"train_loss": [], "val_loss": []}
-    
-    # TODO remove 
-    for name, param in prepared_model.named_modules():
-        print(f"{name}: {param}")
-    print(layer_bit_depths)
-    for name, param in prepared_model.named_parameters():
-        print(f"{name}: {param}")
 
     for epoch in range(epochs):
         prepared_model.train()
