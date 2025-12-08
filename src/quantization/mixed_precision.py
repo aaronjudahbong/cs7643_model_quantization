@@ -372,7 +372,7 @@ if __name__ == "__main__":
     # Visualization
     # Load Image
     sample_folder = "frankfurt"
-    sample_id = "000000_001751"
+    sample_id = "000001_014565"
     image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
     ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
     image = Image.open(image_path).convert("RGB")
