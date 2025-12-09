@@ -20,7 +20,7 @@ ptq:
 
 qat:
   model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
-  mode: "int8" # "default", "int8", "int6" or "int4"
+  mode: "int4" # "default", "int8", "int6" or "int4"
 
   weights: 
     dtype: "qint8" # Keep constant.
@@ -38,7 +38,7 @@ qat:
   training:
     epochs: 5
     batch_size: 16
-    learning_rate: 5e-4
+    learning_rate: 0.0001
     weight_decay: 1e-5
     train_transforms:
       crop: True
