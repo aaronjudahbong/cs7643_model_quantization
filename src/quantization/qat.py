@@ -100,7 +100,7 @@ def run_qat(idx, config, results_dir):
     all_targets = []
     
     with torch.no_grad():
-        for i, (image, labels) in enumerate(tqdm(val_loader, desc="Validation inference")):
+        for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
             image = image.to(device, non_blocking=True)
             
             out = prepared_model(image)['out']
