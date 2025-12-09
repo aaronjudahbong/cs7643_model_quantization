@@ -73,6 +73,112 @@ def run_miou(model, device, dataloader):
     print(f"mIoU: {miou:.4f}")
     return miou
 
+def evaluate_model(model, val_image_folder: str, val_label_folder: str, 
+                   device: str = None, batch_size: int = 1, quantization_bits: int = 8) -> dict:
+    """
+    Evaluate a model checkpoint with streaming mIoU calculation (memory-safe).
+
+    Returns: 
+        {
+            'miou': float,
+            'iou': list of per-class IoUs,
+            'model_size_mb': float,
+            'latency_stats': placeholder
+        }
+    """
+
+    import numpy as np
+
+    if device is None:
+        device = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
+
+    print(f"Using device: {device}")
+
+    # --------------------------------------------------
+    # Model size
+    # --------------------------------------------------
+    model_size_mb = calculate_model_size(model, quantization_bits=quantization_bits)
+    print(f"\nModel Size: {model_size_mb:.2f} MB")
+
+    # --------------------------------------------------
+    # Dataset loader
+    # --------------------------------------------------
+    print(f"\nLoading validation dataset...")
+    val_transforms = {'crop': False, 'resize': False, 'flip': False}
+    val_dataset = cityScapesDataset(val_image_folder, val_label_folder, val_transforms)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
+    # --------------------------------------------------
+    # Prepare streaming confusion matrix
+    # --------------------------------------------------
+    num_classes = 19
+    ignore_index = 255
+    confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
+
+    # --------------------------------------------------
+    # Inference loop (streaming, no prediction storage)
+    # --------------------------------------------------
+    print(f"\nRunning inference on validation set...")
+
+    model.eval()
+    with torch.no_grad():
+        for i, (image, labels) in enumerate(val_loader):
+
+            image = image.to(device, non_blocking=True)
+
+            # forward pass
+            out = model(image)
+            if isinstance(out, dict):
+                out = out["out"]
+
+            preds = out.argmax(dim=1).cpu().numpy()
+            targets = labels.cpu().numpy()
+
+            # Flatten per batch
+            preds = preds.reshape(-1)
+            targets = targets.reshape(-1)
+
+            # Mask ignore index
+            mask = targets != ignore_index
+            preds = preds[mask]
+            targets = targets[mask]
+
+            # Update confusion matrix
+            # bincount trick: (target * num_classes + pred)
+            confusion += np.bincount(
+                targets * num_classes + preds,
+                minlength=num_classes * num_classes
+            ).reshape(num_classes, num_classes)
+
+            if (i + 1) % 10 == 0:
+                print(f"  Completed {i + 1}/{len(val_loader)}")
+
+    # --------------------------------------------------
+    # Compute IoU + mIoU
+    # --------------------------------------------------
+    print(f"\nCalculating mIoU...")
+
+    intersection = np.diag(confusion)
+    union = confusion.sum(1) + confusion.sum(0) - intersection
+    iou = intersection / np.maximum(union, 1)
+    miou = np.nanmean(iou)
+
+    print(f"\nmIoU: {miou:.4f}")
+
+    print(f"\n{'='*50}")
+    print(f"EVALUATION SUMMARY")
+    print(f"{'='*50}")
+    print(f"Model Size: {model_size_mb:.2f} MB")
+    print(f"mIoU: {miou:.4f}")
+    print(f"{'='*50}")
+
+    return {
+        'miou': float(miou),
+        'iou': iou.tolist(),
+        'model_size_mb': model_size_mb,
+        'latency_stats': {}
+    }
+
 def run_qat(idx, config, results_dir):
     set_seed()
     print("--- Running QAT Script ---")
@@ -199,7 +305,14 @@ def run_qat(idx, config, results_dir):
     # run_miou(prepared_model.to("cpu").eval(), "cpu", val_dataloader)
 
     print("4 - Calculate mIOU on quantized model, device = cpu")
-    miou_q = run_miou(quantized_model.to("cpu").eval(), "cpu", val_dataloader)
+    # miou_q = run_miou(quantized_model.to("cpu").eval(), "cpu", val_dataloader)
+    mode_to_bits = {"int8": 8, "int6": 6, "int4": 4}
+    data = evaluate_model(quantized_model.to("cpu").eval(),
+                   val_image_folder = val_img_path,
+                   val_label_folder = val_label_path, 
+                   device = "cpu",
+                   batch_size = 1,
+                   quantization_bits = mode_to_bits[config['mode']])
 
     print("Saving QAT Model ...")
     model_path = os.path.join(results_dir, f"qat_quantized_model_{idx}.pth")
@@ -215,7 +328,7 @@ def run_qat(idx, config, results_dir):
       # "val_mious": [round(miou, 3) for miou in val_mious],
       "final_train_loss": train_losses[-1],
       "final_val_loss": val_losses[-1],
-      "final_val_miou_q": miou_q
+      "data": data
     }
 
     json_path = os.path.join(results_dir, "qat_results.json")
