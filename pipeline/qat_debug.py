@@ -194,8 +194,8 @@ def run_qat(idx, config, results_dir):
         print(f"mIoU: {miou:.4f}")
         val_mious.append(miou)
 
-    print("Calculate mIOU on prepared model, device = device")
-    run_miou(prepared_model.to(device).eval(), device, val_dataloader)
+    print(f"Calculate mIOU on prepared model, device = {device}")
+    run_miou(prepared_model.eval(), device, val_dataloader)
     print("Calculate mIOU on prepared model, device = cpu")
     run_miou(prepared_model.to("cpu").eval(), "cpu", val_dataloader)
 
