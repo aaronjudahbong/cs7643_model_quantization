@@ -107,4 +107,7 @@ def build_qconfig(quantization_type, config):
         # Skip quantizing the ASPP module (only quantize the backbone).
         qconfig_mapping.set_module_name("classifier.0", None) # ASPP module (convs and project).
 
+    if config.get("skip_classifier", False):
+        qconfig_mapping.set_module_name("classifier", None) # Full classifier (ASPP + head).
+
     return qconfig_mapping
