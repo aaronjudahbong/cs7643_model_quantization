@@ -1,0 +1,167 @@
+[
+  {
+    "idx": 0,
+    "config": {
+      "model_checkpoint": "models/finetuned_model_last_epoch.pth",
+      "mode": "int6",
+      "weights": {
+        "dtype": "qint8",
+        "granularity": "per_channel"
+      },
+      "activations": {
+        "dtype": "quint8",
+        "granularity": "per_tensor",
+        "observer": "histogram"
+      },
+      "calibration": {
+        "enabled": true,
+        "steps": 128
+      },
+      "training": {
+        "epochs": 5,
+        "batch_size": 16,
+        "learning_rate": 0.0001,
+        "weight_decay": "1e-5",
+        "train_transforms": {
+          "crop": true,
+          "resize": true,
+          "flip": true
+        },
+        "val_transforms": {
+          "crop": false,
+          "resize": false,
+          "flip": false
+        }
+      },
+      "skip_aspp": true,
+      "skip_classifier": true
+    },
+    "train_losses": [
+      0.174,
+      0.181,
+      0.172,
+      0.167,
+      0.165
+    ],
+    "val_losses": [
+      0.236,
+      0.228,
+      0.222,
+      0.223,
+      0.223
+    ],
+    "final_train_loss": 0.1645074826815436,
+    "final_val_loss": 0.22295057168230414,
+    "final_val_miou_q": 0.07665619726801731
+  },
+  {
+    "idx": 1,
+    "config": {
+      "model_checkpoint": "models/finetuned_model_last_epoch.pth",
+      "mode": "int6",
+      "weights": {
+        "dtype": "qint8",
+        "granularity": "per_channel"
+      },
+      "activations": {
+        "dtype": "quint8",
+        "granularity": "per_tensor",
+        "observer": "histogram"
+      },
+      "calibration": {
+        "enabled": true,
+        "steps": 128
+      },
+      "training": {
+        "epochs": 5,
+        "batch_size": 16,
+        "learning_rate": 5e-05,
+        "weight_decay": "1e-5",
+        "train_transforms": {
+          "crop": true,
+          "resize": true,
+          "flip": true
+        },
+        "val_transforms": {
+          "crop": false,
+          "resize": false,
+          "flip": false
+        }
+      },
+      "skip_aspp": true,
+      "skip_classifier": true
+    },
+    "train_losses": [
+      0.17,
+      0.177,
+      0.17,
+      0.166,
+      0.165
+    ],
+    "val_losses": [
+      0.23,
+      0.225,
+      0.222,
+      0.221,
+      0.222
+    ],
+    "final_train_loss": 0.1650763475686632,
+    "final_val_loss": 0.22207048209384084,
+    "final_val_miou_q": 0.08696306409094066
+  },
+  {
+    "idx": 2,
+    "config": {
+      "model_checkpoint": "models/finetuned_model_last_epoch.pth",
+      "mode": "int6",
+      "weights": {
+        "dtype": "qint8",
+        "granularity": "per_channel"
+      },
+      "activations": {
+        "dtype": "quint8",
+        "granularity": "per_tensor",
+        "observer": "histogram"
+      },
+      "calibration": {
+        "enabled": true,
+        "steps": 128
+      },
+      "training": {
+        "epochs": 5,
+        "batch_size": 16,
+        "learning_rate": 1e-05,
+        "weight_decay": "1e-5",
+        "train_transforms": {
+          "crop": true,
+          "resize": true,
+          "flip": true
+        },
+        "val_transforms": {
+          "crop": false,
+          "resize": false,
+          "flip": false
+        }
+      },
+      "skip_aspp": true,
+      "skip_classifier": true
+    },
+    "train_losses": [
+      0.169,
+      0.176,
+      0.171,
+      0.168,
+      0.167
+    ],
+    "val_losses": [
+      0.222,
+      0.221,
+      0.221,
+      0.221,
+      0.222
+    ],
+    "final_train_loss": 0.16739690287779735,
+    "final_val_loss": 0.22160268388688564,
+    "final_val_miou_q": 0.06414811679556306
+  }
+]
