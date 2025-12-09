@@ -20,7 +20,7 @@ ptq:
 
 qat:
   model_checkpoint: "models/finetuned_model_last_epoch.pth" # Change to model checkpoint path.
-  mode: "int8" # "default", "int8", "int6" or "int4"
+  mode: "int4" # "default", "int8", "int6" or "int4"
 
   weights: 
     dtype: "qint8" # Keep constant.
