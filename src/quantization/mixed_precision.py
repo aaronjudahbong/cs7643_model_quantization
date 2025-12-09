@@ -227,40 +227,7 @@ if __name__ == "__main__":
     # Prepare model for mixed precision QAT
     example_inputs, _ = next(iter(cal_loader))
     example_inputs = example_inputs.to(device)
-    
-    # Count modules before preparation
-    modules_before = len(list(model.named_modules()))
-    print(f"Number of modules before QAT preparation: {modules_before}")
-    
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
-    
-    # Count modules after preparation
-    modules_after = len(list(prepared_model.named_modules()))
-    print(f"Number of modules before QAT preparation: {modules_before}")
-    print(f"Number of modules after QAT preparation: {modules_after}")
-    print(f"Modules added by prepare_qat_fx: {modules_after - modules_before}")
-    
-    # Verify that QConfig assignments are preserved
-    # PyTorch FX applies QConfigMapping BEFORE transforming the model, so assignments
-    # should be preserved even if module names change. However, let's verify module names.
-    print("\nVerifying module name preservation...")
-    original_module_names = {name for name, _ in model.named_modules()}
-    prepared_module_names = {name for name, _ in prepared_model.named_modules()}
-    
-    # Check which original module names are still present in prepared model
-    preserved_names = original_module_names.intersection(prepared_module_names)
-    print(f"Module names preserved: {len(preserved_names)}/{len(original_module_names)}")
-    
-    # Check if layers with bit depth assignments have corresponding modules
-    layers_with_modules = sum(1 for name in layer_bit_depths.keys() if name in prepared_module_names or 
-                              any(prep_name.startswith(name + ".") for prep_name in prepared_module_names))
-    print(f"Layers with bit depth assignments found in prepared model: {layers_with_modules}/{len(layer_bit_depths)}")
-    
-    # Note: Even if module names change, PyTorch FX should preserve QConfig assignments
-    # because QConfigMapping is applied during graph transformation, not after.
-    print("Note: QConfig assignments are applied during prepare_qat_fx transformation,")
-    print("      so they should be preserved even if module names change.")
-    
     prepared_model = prepared_model.to(device)
     prepared_model.eval() # eval for calibration
     
