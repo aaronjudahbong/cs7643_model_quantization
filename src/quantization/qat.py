@@ -127,31 +127,31 @@ def run_qat(idx, config, results_dir):
             loss.backward()
             optimizer.step()
 
-            # Calculate mIoU on validation set after each batch
-            prepared_model.eval()
-            val_predictions = []
-            val_targets = []
-            with torch.no_grad():
-                for val_image, val_label in val_dataloader:
-                    val_image = val_image.to(device, non_blocking=True)
-                    val_label = val_label.to(device, non_blocking=True)
-                    val_out = prepared_model(val_image)['out']
-                    val_preds = val_out.argmax(dim=1)
-                    val_predictions.append(val_preds.cpu())
-                    val_targets.append(val_label.cpu())
+            # # Calculate mIoU on validation set after each batch
+            # prepared_model.eval()
+            # val_predictions = []
+            # val_targets = []
+            # with torch.no_grad():
+            #     for val_image, val_label in val_dataloader:
+            #         val_image = val_image.to(device, non_blocking=True)
+            #         val_label = val_label.to(device, non_blocking=True)
+            #         val_out = prepared_model(val_image)['out']
+            #         val_preds = val_out.argmax(dim=1)
+            #         val_predictions.append(val_preds.cpu())
+            #         val_targets.append(val_label.cpu())
             
-            # Concatenate and calculate mIoU
-            val_predictions = torch.cat(val_predictions, dim=0)
-            val_targets = torch.cat(val_targets, dim=0)
-            val_miou, _ = calculate_miou(val_predictions, val_targets, num_classes=19, ignore_index=255)
-            print(f"  Batch {len(train_losses) if train_losses else 0} - Validation mIoU: {val_miou:.4f}")
+            # # Concatenate and calculate mIoU
+            # val_predictions = torch.cat(val_predictions, dim=0)
+            # val_targets = torch.cat(val_targets, dim=0)
+            # val_miou, _ = calculate_miou(val_predictions, val_targets, num_classes=19, ignore_index=255)
+            # print(f"  Batch {len(train_losses) if train_losses else 0} - Validation mIoU: {val_miou:.4f}")
             
-            # Set back to train mode
-            prepared_model.train()
+            # # Set back to train mode
+            # prepared_model.train()
 
         prepared_model.eval()
         validation_loss = 0
-        val_miou = 0
+        # val_miou = 0
         with torch.no_grad():
             for image, label in tqdm(val_dataloader, desc=f"Validation Epoch {epoch}"):
                 image = image.to(device, non_blocking=True)
@@ -161,21 +161,20 @@ def run_qat(idx, config, results_dir):
                 pred = out.argmax(dim=1)
                 loss = loss_function(out, label)
                 validation_loss += loss.item()
-                val_miou += calculate_miou(pred, label)[0]
+                # val_miou += calculate_miou(pred, label)[0]
         
         scheduler.step()
 
         average_training_loss = training_loss / len(train_dataloader)
         average_validation_loss = validation_loss / len(val_dataloader)
-        average_val_miou = val_miou / len(val_dataloader)
+        # average_val_miou = val_miou / len(val_dataloader)
 
         train_losses.append(average_training_loss)
         val_losses.append(average_validation_loss)
-        val_mious.append(average_val_miou)
+        # val_mious.append(average_val_miou)
 
-        print(f"Epoch: {epoch}, Training Loss: {average_training_loss}, Validation Loss: {average_validation_loss}, mIOU: {average_val_miou}")
-
-
+        # print(f"Epoch: {epoch}, Training Loss: {average_training_loss}, Validation Loss: {average_validation_loss}, mIOU: {average_val_miou}")
+        print(f"Epoch: {epoch}, Training Loss: {average_training_loss}, Validation Loss: {average_validation_loss}")
     
     # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
@@ -206,30 +205,30 @@ def run_qat(idx, config, results_dir):
     prepared_model = prepared_model.cpu()
     quantized_model = quantize_fx.convert_fx(prepared_model.eval())
     quantized_model = quantized_model.to(device).eval()
-    for i in range(2):
-        # Run inference on full validation set and calculate mIoU
-        print(f"\nRunning inference on validation set AFTER...")
-        all_predictions = []
-        all_targets = []
-        
-        with torch.no_grad():
-            for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
-                image = image.to(device, non_blocking=True)
-                
-                out = quantized_model(image)['out']
-                preds = out.argmax(dim=1)
-                
-                all_predictions.append(preds.cpu())
-                all_targets.append(labels)
-                
-        # Concatenate all predictions and targets
-        all_predictions = torch.cat(all_predictions, dim=0)
-        all_targets = torch.cat(all_targets, dim=0)
-        
-        # Calculate mIoU
-        print(f"\nCalculating mIoU...")
-        miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
-        print(f"mIoU: {miou:.4f}")
+
+    # Run inference on full validation set and calculate mIoU
+    print(f"\nRunning inference on validation set...")
+    all_predictions = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
+            image = image.to(device, non_blocking=True)
+            
+            out = prepared_model(image)['out']
+            preds = out.argmax(dim=1)
+            
+            all_predictions.append(preds.cpu())
+            all_targets.append(labels)
+            
+    # Concatenate all predictions and targets
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    
+    # Calculate mIoU
+    print(f"\nCalculating mIoU...")
+    miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    print(f"mIoU: {miou:.4f}")
 
     print("Saving QAT Model ...")
     model_path = os.path.join(results_dir, f"qat_quantized_model_{idx}.pth")
