@@ -156,7 +156,7 @@ def run_qat(idx, config, results_dir):
             # Calculate mIoU on current batch
             with torch.no_grad():
                 preds = out.argmax(dim=1)
-                batch_miou, _ = calculate_miou(preds.cpu(), labels.cpu(), num_classes=19, ignore_index=255)
+                batch_miou, _ = calculate_miou(preds.cpu(), label.cpu(), num_classes=19, ignore_index=255)
                 print(f"  Batch mIoU: {batch_miou:.4f}")
 
         prepared_model.eval()
