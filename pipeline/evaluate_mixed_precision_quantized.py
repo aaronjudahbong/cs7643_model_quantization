@@ -1,27 +1,25 @@
 import os
 import json
 import yaml
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.ao.quantization as tq
 import torch.ao.quantization.quantize_fx as quantize_fx
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from src.quantization.mixed_precision import build_qconfig_per_layer
 from pipeline.create_dataset import cityScapesDataset
+from pipeline.metrics import calculate_miou
 
 if __name__ == "__main__":
     print("--- Evaluating Quantized Mixed-Precision Model ---")
     
-    # Device setup - quantized models don't work on MPS, use CPU or CUDA
-    # MPS doesn't support quantized operations, so we need to use CPU
-    if torch.cuda.is_available():
-        device = 'cuda'
-    else:
-        device = 'cpu'  # Use CPU instead of MPS for quantized models
-    print(f"Using Device: {device} (quantized models don't support MPS)")
+    # Device setup - force CPU for quantized models
+    # Quantized models don't work on MPS, and CPU is more reliable for quantized inference
+    device = 'cpu'
+    print(f"Using Device: {device} (forced CPU for quantized model evaluation)")
     
     # Load config
     with open("configs/ptq.yaml", "r") as f:
@@ -96,67 +94,35 @@ if __name__ == "__main__":
     val_transforms = {'crop': False, 'resize': False, 'flip': False}
     
     val_dataset = cityScapesDataset(val_img_path, val_label_path, val_transforms)
-    # pin_memory only helps with CUDA, not CPU
-    pin_memory = (device == 'cuda')
-    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=2, pin_memory=pin_memory)
+    # pin_memory only helps with CUDA, not CPU (we're forcing CPU)
+    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=2, pin_memory=False)
     
-    num_classes = 19
-    ignore_index = 255
-    confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
-
-    # --------------------------------------------------
-    # Inference loop (streaming, no prediction storage)
-    # --------------------------------------------------
+    # Run inference on validation set
     print(f"\nRunning inference on validation set...")
-
-    quantized_model.eval()
+    all_predictions = []
+    all_targets = []
+    
     with torch.no_grad():
-        for i, (image, labels) in enumerate(val_loader):
-
-            image = image.to(device, non_blocking=True)
-
-            # forward pass
-            out = quantized_model(image)
-            if isinstance(out, dict):
-                out = out["out"]
-
-            preds = out.argmax(dim=1).cpu().numpy()
-            targets = labels.cpu().numpy()
-
-            # Flatten per batch
-            preds = preds.reshape(-1)
-            targets = targets.reshape(-1)
-
-            # Mask ignore index
-            mask = targets != ignore_index
-            preds = preds[mask]
-            targets = targets[mask]
-
-            # Update confusion matrix
-            # bincount trick: (target * num_classes + pred)
-            confusion += np.bincount(
-                targets * num_classes + preds,
-                minlength=num_classes * num_classes
-            ).reshape(num_classes, num_classes)
-
-            if (i + 1) % 10 == 0:
-                print(f"  Completed {i + 1}/{len(val_loader)}")
-
-    # --------------------------------------------------
-    # Compute IoU + mIoU
-    # --------------------------------------------------
+        for images, labels in tqdm(val_loader, desc="Validation inference"):
+            images = images.to(device, non_blocking=True)
+            
+            output = quantized_model(images)['out']
+            preds = output.argmax(dim=1)
+            
+            all_predictions.append(preds.cpu())
+            all_targets.append(labels)
+    
+    # Concatenate all predictions and targets
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_targets = torch.cat(all_targets, dim=0)
+    
+    # Calculate mIoU
     print(f"\nCalculating mIoU...")
-
-    intersection = np.diag(confusion)
-    union = confusion.sum(1) + confusion.sum(0) - intersection
-    iou = intersection / np.maximum(union, 1)
-    miou = np.nanmean(iou)
-
-    print(f"\nmIoU: {miou:.4f}")
+    miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
+    print(f"Final mIoU: {miou:.4f}")
     
     # Print per-class IoUs
     print("\nPer-Class IoU:")
-    for class_idx, iou_val in enumerate(iou):
-        print(f"  Class {class_idx}: {iou_val:.4f}")
-
+    for class_idx, iou in enumerate(per_class_ious):
+        print(f"  Class {class_idx}: {iou:.4f}")
 
