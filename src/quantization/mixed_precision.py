@@ -2,6 +2,7 @@ import os
 import json
 import yaml
 import numpy as np
+import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -223,7 +224,18 @@ if __name__ == "__main__":
     # Prepare model for mixed precision QAT
     example_inputs, _ = next(iter(cal_loader))
     example_inputs = example_inputs.to(device)
+    
+    # Count modules before preparation
+    modules_before = len(list(model.named_modules()))
+    print(f"Number of modules before QAT preparation: {modules_before}")
+    
     prepared_model = quantize_fx.prepare_qat_fx(model, qconfig_mapping, (example_inputs,))
+    
+    # Count modules after preparation
+    modules_after = len(list(prepared_model.named_modules()))
+    print(f"Number of modules after QAT preparation: {modules_after}")
+    print(f"Modules added by prepare_qat_fx: {modules_after - modules_before}")
+    
     prepared_model = prepared_model.to(device)
     prepared_model.eval() # eval for calibration
     
@@ -297,15 +309,20 @@ if __name__ == "__main__":
         # Always save latest model
         save_model(prepared_model, f"./models/mixed_precision_last_epoch.pth")
 
-    # calculate model size 
-    print(f"Calculating model size...")
-    model_size_mb = calculate_model_size_mixed_precision(prepared_model, layer_bit_depths=layer_bit_depths)
-    print(f"\nModel Size: {model_size_mb:.2f} MB")
-    
+    print("Convert QAT model ...")
+    # must move model to CPU to convert, else it errors!
+    model_to_quantize = copy.deepcopy(prepared_model.to("cpu").eval())
+    quantized_model = quantize_fx.convert_fx(model_to_quantize)
+
+    print("Saving QAT Model ...")
+    output_path = "models/mixed_precision_model.pth"
+    torch.save(quantized_model.state_dict(), output_path)
+    print(f"Mixed-precision quantized model saved to {output_path}")
+
     # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
-    prepared_model = prepared_model.to(device)
-    prepared_model.eval()
+    quantized_model = quantized_model.to(device)
+    quantized_model.eval()
     all_predictions = []
     all_targets = []
     
@@ -313,7 +330,7 @@ if __name__ == "__main__":
         for i, (image, labels) in enumerate(tqdm(val_loader, desc="Validation inference")):
             image = image.to(device, non_blocking=True)
             
-            out = prepared_model(image)['out']
+            out = quantized_model(image)['out']
             preds = out.argmax(dim=1)
             
             all_predictions.append(preds.cpu())
@@ -327,11 +344,6 @@ if __name__ == "__main__":
     print(f"\nCalculating mIoU...")
     miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
-
-    # Save prepared model (QAT mode)
-    output_path = "models/mixed_precision_model.pth"
-    save_model(prepared_model, output_path)
-    print(f"Mixed-precision model (QAT mode) saved to {output_path}")
     
     # Save training history
     history_output = "results/mixed_precision_training_history.json"
@@ -377,77 +389,77 @@ if __name__ == "__main__":
         f.write(yaml.dump(qat_config, default_flow_style=False, sort_keys=False))
         f.write("\n" + "="*60 + "\n\n")
 
-    # Visualization
-    # Load Image
-    sample_folder = "frankfurt"
-    sample_id = "000001_014565"
-    image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
-    ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
-    image = Image.open(image_path).convert("RGB")
+    # # Visua/lization
+    # # Load Image
+    # sample_folder = "frankfurt"
+    # sample_id = "000001_014565"
+    # image_path = f"./data/leftImg8bit_trainvaltest/leftImg8bit/val/{sample_folder}/{sample_folder}_{sample_id}_leftImg8bit.png"
+    # ground_truth_path = f"./data/gtFine_trainIdColorized/gtFine/val/{sample_folder}/{sample_folder}_{sample_id}_gtFine_color.png"
+    # image = Image.open(image_path).convert("RGB")
     
-    # Normalize image
-    normalize_image = T.Normalize(
-        mean = [0.485, 0.456, 0.406],
-        std = [0.229, 0.224, 0.225]
-    )
-    image_tensor = F.to_tensor(image)
-    image_tensor = normalize_image(image_tensor)
-    image_tensor = image_tensor.unsqueeze(0).to(device)
+    # # Normalize image
+    # normalize_image = T.Normalize(
+    #     mean = [0.485, 0.456, 0.406],
+    #     std = [0.229, 0.224, 0.225]
+    # )
+    # image_tensor = F.to_tensor(image)
+    # image_tensor = normalize_image(image_tensor)
+    # image_tensor = image_tensor.unsqueeze(0).to(device)
 
-    # Load FP32 model for comparison
-    print("Loading FP32 model for comparison...")
-    fp32_model = get_empty_model(num_classes=19)
-    fp32_checkpoint = "models/finetuned_model_last_epoch.pth"
-    fp32_model = load_model(fp32_model, fp32_checkpoint, device=device)
-    fp32_model = fp32_model.to(device)
-    fp32_model.eval()
+    # # Load FP32 model for comparison
+    # print("Loading FP32 model for comparison...")
+    # fp32_model = get_empty_model(num_classes=19)
+    # fp32_checkpoint = "models/finetuned_model_last_epoch.pth"
+    # fp32_model = load_model(fp32_model, fp32_checkpoint, device=device)
+    # fp32_model = fp32_model.to(device)
+    # fp32_model.eval()
 
-    # Run inference on both models
-    with torch.no_grad():
-        # FP32 model prediction
-        fp32_output = fp32_model(image_tensor)['out']
-        fp32_predicted_mask = torch.argmax(fp32_output.squeeze(), dim=0).detach().cpu().numpy()
+    # # Run inference on both models
+    # with torch.no_grad():
+    #     # FP32 model prediction
+    #     fp32_output = fp32_model(image_tensor)['out']
+    #     fp32_predicted_mask = torch.argmax(fp32_output.squeeze(), dim=0).detach().cpu().numpy()
         
-        # Mixed-precision model prediction
-        prepared_model.eval()  # Set to eval for inference
-        prepared_model = prepared_model.to(device)
-        mp_output = prepared_model(image_tensor)['out']
-        mp_predicted_mask = torch.argmax(mp_output.squeeze(), dim=0).detach().cpu().numpy()
+    #     # Mixed-precision model prediction
+    #     prepared_model.eval()  # Set to eval for inference
+    #     prepared_model = prepared_model.to(device)
+    #     mp_output = prepared_model(image_tensor)['out']
+    #     mp_predicted_mask = torch.argmax(mp_output.squeeze(), dim=0).detach().cpu().numpy()
 
-    # Map train IDs to colors for visualization
-    def mask_to_color(mask):
-        height, width = mask.shape
-        color_mask = np.zeros((height, width, 3), dtype=np.uint8)
-        for train_id, color in map_train_id_to_color.items():
-            color_mask[mask == train_id] = color
-        return color_mask
+    # # Map train IDs to colors for visualization
+    # def mask_to_color(mask):
+    #     height, width = mask.shape
+    #     color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+    #     for train_id, color in map_train_id_to_color.items():
+    #         color_mask[mask == train_id] = color
+    #     return color_mask
 
-    fp32_color_mask = mask_to_color(fp32_predicted_mask)
-    mp_color_mask = mask_to_color(mp_predicted_mask)
+    # fp32_color_mask = mask_to_color(fp32_predicted_mask)
+    # mp_color_mask = mask_to_color(mp_predicted_mask)
 
-    # Display comparison
-    plt.figure(figsize=(16, 4), constrained_layout=True)
+    # # Display comparison
+    # plt.figure(figsize=(16, 4), constrained_layout=True)
     
-    plt.subplot(1, 4, 1)
-    plt.title("Original Image", fontsize=12)
-    plt.imshow(image)
-    plt.axis("off")
+    # plt.subplot(1, 4, 1)
+    # plt.title("Original Image", fontsize=12)
+    # plt.imshow(image)
+    # plt.axis("off")
 
-    plt.subplot(1, 4, 2)
-    plt.title("Ground Truth", fontsize=12)
-    ground_truth = Image.open(ground_truth_path)
-    plt.imshow(ground_truth)
-    plt.axis("off")
+    # plt.subplot(1, 4, 2)
+    # plt.title("Ground Truth", fontsize=12)
+    # ground_truth = Image.open(ground_truth_path)
+    # plt.imshow(ground_truth)
+    # plt.axis("off")
 
-    plt.subplot(1, 4, 3)
-    plt.title("FP32 Model Prediction", fontsize=12)
-    plt.imshow(fp32_color_mask)
-    plt.axis("off")
+    # plt.subplot(1, 4, 3)
+    # plt.title("FP32 Model Prediction", fontsize=12)
+    # plt.imshow(fp32_color_mask)
+    # plt.axis("off")
 
-    plt.subplot(1, 4, 4)
-    plt.title("Mixed-Precision Model Prediction", fontsize=12)
-    plt.imshow(mp_color_mask)
-    plt.axis("off")
+    # plt.subplot(1, 4, 4)
+    # plt.title("Mixed-Precision Model Prediction", fontsize=12)
+    # plt.imshow(mp_color_mask)
+    # plt.axis("off")
     
-    plt.savefig("./results/mp_vs_fp32_visualization.png", dpi=150, bbox_inches='tight')
-    plt.close()
+    # plt.savefig("./results/mp_vs_fp32_visualization.png", dpi=150, bbox_inches='tight')
+    # plt.close()
