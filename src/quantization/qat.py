@@ -215,7 +215,7 @@ def run_qat(idx, config, results_dir):
         for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
             image = image.to(device, non_blocking=True)
             
-            out = prepared_model(image)['out']
+            out = quantized_model(image)['out']
             preds = out.argmax(dim=1)
             
             all_predictions.append(preds.cpu())
