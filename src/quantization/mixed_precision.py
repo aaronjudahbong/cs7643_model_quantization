@@ -303,12 +303,6 @@ if __name__ == "__main__":
             train_loss += loss.item()
             loss.backward()
             optimizer.step()
-            
-            # Calculate mIoU on current batch
-            with torch.no_grad():
-                preds = output.argmax(dim=1)
-                batch_miou, _ = calculate_miou(preds.cpu(), labels.cpu(), num_classes=19, ignore_index=255)
-                print(f"  Batch mIoU: {batch_miou:.4f}")
 
         prepared_model.eval()
         val_loss = 0
