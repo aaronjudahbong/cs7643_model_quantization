@@ -11,7 +11,7 @@ from tqdm import tqdm
 from src.models.deeplabv3_mnv3 import get_empty_model, load_model
 from src.quantization.mixed_precision import build_qconfig_per_layer
 from pipeline.create_dataset import cityScapesDataset
-from pipeline.metrics import calculate_miou
+from pipeline.metrics import calculate_miou, calculate_model_size_mixed_precision
 
 if __name__ == "__main__":
     print("--- Evaluating Quantized Mixed-Precision Model ---")
@@ -88,6 +88,56 @@ if __name__ == "__main__":
     quantized_model = quantized_model.to(device)
     quantized_model.eval()
     
+    # # Debug: Check quantized model structure
+    # # Note: After convert_fx, quantized models store parameters differently
+    # print("\n" + "=" * 60)
+    # print("Checking quantized model structure...")
+    # print("=" * 60)
+    
+    # # Check state_dict keys (this is what's actually saved/loaded)
+    # state_dict_keys = list(quantized_model.state_dict().keys())
+    # print(f"\nState dict keys (first 20): {len(state_dict_keys)} total")
+    # for key in state_dict_keys[:20]:
+    #     tensor = quantized_model.state_dict()[key]
+    #     print(f"  {key}: shape={tensor.shape}, dtype={tensor.dtype}")
+    # if len(state_dict_keys) > 20:
+    #     print(f"  ... (showing first 20 of {len(state_dict_keys)} keys)")
+    
+    # # Check named_parameters
+    # param_list = list(quantized_model.named_parameters())
+    # print(f"\nNamed parameters: {len(param_list)}")
+    # if len(param_list) > 0:
+    #     for name, param in param_list[:10]:
+    #         print(f"  {name}: shape={param.shape}, dtype={param.dtype}")
+    #     if len(param_list) > 10:
+    #         print(f"  ... (showing first 10 of {len(param_list)} parameters)")
+    # else:
+    #     print("  (No named_parameters - this is normal for quantized models)")
+    
+    # # Check named_buffers
+    # buffer_list = list(quantized_model.named_buffers())
+    # print(f"\nNamed buffers: {len(buffer_list)}")
+    # if len(buffer_list) > 0:
+    #     for name, buffer in buffer_list[:10]:
+    #         print(f"  {name}: shape={buffer.shape}, dtype={buffer.dtype}")
+    #     if len(buffer_list) > 10:
+    #         print(f"  ... (showing first 10 of {len(buffer_list)} buffers)")
+    
+    # # Print module names
+    # print("\n" + "=" * 60)
+    # print("Quantized model module names (first 20):")
+    # print("=" * 60)
+    # module_list = list(quantized_model.named_modules())
+    # print(f"Total modules: {len(module_list)}")
+    # for name, module in module_list[:20]:
+    #     print(f"  {name}: {type(module).__name__}")
+    # if len(module_list) > 20:
+    #     print(f"  ... (showing first 20 of {len(module_list)} modules)")
+    
+    # state_dict = model.state_dict()
+    # for param_name, tensor in state_dict.items():
+    #     print(f"  {param_name}: shape={tensor.shape}, dtype={tensor.dtype}")
+
     # Setup validation dataset
     val_img_path = "data/leftImg8bit_trainvaltest/leftImg8bit/val"
     val_label_path = "data/gtFine_trainId/gtFine/val"
@@ -126,3 +176,7 @@ if __name__ == "__main__":
     for class_idx, iou in enumerate(per_class_ious):
         print(f"  Class {class_idx}: {iou:.4f}")
 
+    # calculate model size
+    print(f"Calculating model size...")
+    model_size_mb = calculate_model_size_mixed_precision(quantized_model, layer_bit_depths=layer_bit_depths)
+    print(f"Model Size: {model_size_mb:.2f} MB")

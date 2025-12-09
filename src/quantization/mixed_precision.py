@@ -239,6 +239,12 @@ if __name__ == "__main__":
                           weight_decay=float(qat_config['training']['weight_decay']))
     scheduler = CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-5)
 
+    # Save bit depth assignment
+    bit_depth_output = "results/mixed_precision_layer_bit_depths.json"
+    with open(bit_depth_output, "w") as f:
+        json.dump(layer_bit_depths, f, indent=2)
+    print(f"Bit depth assignments saved to {bit_depth_output}")
+
     # Calibration
     if qat_config.get('calibration', {})['enabled']:
         print("Starting Calibration...")
@@ -300,15 +306,27 @@ if __name__ == "__main__":
     model_to_quantize = copy.deepcopy(prepared_model.to("cpu").eval())
     quantized_model = quantize_fx.convert_fx(model_to_quantize)
 
-    # Calculate model size on quantized model
-    print(f"Calculating model size...")
-    model_size_mb = calculate_model_size_mixed_precision(quantized_model, layer_bit_depths=layer_bit_depths)
-    print(f"\nModel Size: {model_size_mb:.2f} MB")
-
     print("Saving QAT Model ...")
     output_path = "models/mixed_precision_model.pth"
     torch.save(quantized_model.state_dict(), output_path)
     print(f"Mixed-precision quantized model saved to {output_path}")
+
+    # Save training history
+    history_output = "results/mixed_precision_training_history.json"
+    with open(history_output, "w") as f:
+        json.dump(training_history, f, indent=2)
+    print(f"Training history saved to {history_output}")
+    
+    # Save bit depth assignment
+    bit_depth_output = "results/mixed_precision_layer_bit_depths.json"
+    with open(bit_depth_output, "w") as f:
+        json.dump(layer_bit_depths, f, indent=2)
+    print(f"Bit depth assignments saved to {bit_depth_output}")
+
+    # Calculate model size on quantized model
+    print(f"Calculating model size...")
+    model_size_mb = calculate_model_size_mixed_precision(quantized_model, layer_bit_depths=layer_bit_depths)
+    print(f"\nModel Size: {model_size_mb:.2f} MB")
 
     # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
@@ -335,18 +353,6 @@ if __name__ == "__main__":
     print(f"\nCalculating mIoU...")
     miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
-    
-    # Save training history
-    history_output = "results/mixed_precision_training_history.json"
-    with open(history_output, "w") as f:
-        json.dump(training_history, f, indent=2)
-    print(f"Training history saved to {history_output}")
-    
-    # Save bit depth assignment
-    bit_depth_output = "results/mixed_precision_layer_bit_depths.json"
-    with open(bit_depth_output, "w") as f:
-        json.dump(layer_bit_depths, f, indent=2)
-    print(f"Bit depth assignments saved to {bit_depth_output}")
     
     # Save evaluation results to text file
     results_output = "results/mixed_precision_results.txt"
