@@ -91,32 +91,6 @@ def run_qat(idx, config, results_dir):
     optimizer = optim.Adam(prepared_model.parameters(), lr=float(config['training']['learning_rate']),
                                                         weight_decay=float(config['training']['weight_decay']))
     scheduler = CosineAnnealingLR(optimizer, T_max = config['training']['epochs'], eta_min = 1e-5)
-
-    # Run inference on full validation set and calculate mIoU
-    print(f"\nRunning inference on validation set...")
-    prepared_model = prepared_model.to(device)
-    prepared_model.eval()
-    all_predictions = []
-    all_targets = []
-    
-    with torch.no_grad():
-        for i, (image, labels) in enumerate(tqdm(val_dataloader, desc="Validation inference")):
-            image = image.to(device, non_blocking=True)
-            
-            out = prepared_model(image)['out']
-            preds = out.argmax(dim=1)
-            
-            all_predictions.append(preds.cpu())
-            all_targets.append(labels)
-            
-    # Concatenate all predictions and targets
-    all_predictions = torch.cat(all_predictions, dim=0)
-    all_targets = torch.cat(all_targets, dim=0)
-    
-    # Calculate mIoU
-    print(f"\nCalculating mIoU...")
-    miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
-    print(f"mIoU before calibration: {miou:.4f}")
     
     print("Start Calibration...")
     if config['calibration']['enabled']:
