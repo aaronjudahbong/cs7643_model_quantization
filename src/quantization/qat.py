@@ -153,11 +153,27 @@ def run_qat(idx, config, results_dir):
             loss.backward()
             optimizer.step()
 
-            # Calculate mIoU on current batch
+            # Calculate mIoU on validation set after each batch
+            prepared_model.eval()
+            val_predictions = []
+            val_targets = []
             with torch.no_grad():
-                preds = out.argmax(dim=1)
-                batch_miou, _ = calculate_miou(preds.cpu(), label.cpu(), num_classes=19, ignore_index=255)
-                print(f"  Batch mIoU: {batch_miou:.4f}")
+                for val_image, val_label in tqdm(val_dataloader, desc="Validation inference per-batch"):
+                    val_image = val_image.to(device, non_blocking=True)
+                    val_label = val_label.to(device, non_blocking=True)
+                    val_out = prepared_model(val_image)['out']
+                    val_preds = val_out.argmax(dim=1)
+                    val_predictions.append(val_preds.cpu())
+                    val_targets.append(val_label.cpu())
+            
+            # Concatenate and calculate mIoU
+            val_predictions = torch.cat(val_predictions, dim=0)
+            val_targets = torch.cat(val_targets, dim=0)
+            val_miou, _ = calculate_miou(val_predictions, val_targets, num_classes=19, ignore_index=255)
+            print(f"  Batch {len(train_losses) if train_losses else 0} - Validation mIoU: {val_miou:.4f}")
+            
+            # Set back to train mode
+            prepared_model.train()
 
         prepared_model.eval()
         validation_loss = 0
