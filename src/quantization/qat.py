@@ -206,6 +206,11 @@ def run_qat(idx, config, results_dir):
     quantized_model = quantize_fx.convert_fx(prepared_model.eval())
     quantized_model = quantized_model.to(device).eval()
 
+    print("Saving QAT Model ...")
+    model_path = os.path.join(results_dir, f"qat_quantized_model_{idx}.pth")
+    torch.save(quantized_model.state_dict(), model_path)
+    print(f"QAT Model Size (MB): {os.path.getsize(model_path) / 1e6:.2f}")
+
     # Run inference on full validation set and calculate mIoU
     print(f"\nRunning inference on validation set...")
     all_predictions = []
@@ -229,11 +234,6 @@ def run_qat(idx, config, results_dir):
     print(f"\nCalculating mIoU...")
     miou, per_class_ious = calculate_miou(all_predictions, all_targets, num_classes=19, ignore_index=255)
     print(f"mIoU: {miou:.4f}")
-
-    print("Saving QAT Model ...")
-    model_path = os.path.join(results_dir, f"qat_quantized_model_{idx}.pth")
-    torch.save(quantized_model.state_dict(), model_path)
-    print(f"QAT Model Size (MB): {os.path.getsize(model_path) / 1e6:.2f}")
 
     # save all results
     result = {
