@@ -132,7 +132,7 @@ def run_qat(idx, config, results_dir):
             val_predictions = []
             val_targets = []
             with torch.no_grad():
-                for val_image, val_label in tqdm(val_dataloader, desc="Validation inference per-batch"):
+                for val_image, val_label in val_dataloader:
                     val_image = val_image.to(device, non_blocking=True)
                     val_label = val_label.to(device, non_blocking=True)
                     val_out = prepared_model(val_image)['out']
