@@ -157,8 +157,8 @@ if __name__ == "__main__":
     
     # Calculate thresholds from percentiles (for now )
     entropy_values = list(layer_entropies.values())
-    high_threshold = np.percentile(entropy_values, 75)
-    low_threshold = np.percentile(entropy_values, 50)
+    high_threshold = np.percentile(entropy_values, 50)
+    low_threshold = np.percentile(entropy_values, 25)
     print(f"Entropy thresholds: high (75th percentile) = {high_threshold:.4f}, low (50th percentile) = {low_threshold:.4f}")
     
     # Load model
